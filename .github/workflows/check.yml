@@ -22,13 +22,31 @@ jobs:
       - name: Check for typos
         uses: crate-ci/typos@v1.0.4
   conventional_commit:
-    name: check conventional commit compliance
-    # The cocogitto-action fails on the self hosted runner:
+    name: conventional commit check
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
     steps:
       - uses: actions/checkout@v4
         with:
+          submodules: true
+          # Fetch all commits to generate the changelog
           fetch-depth: 0
+      - name: Conventional commit check
+        uses: cocogitto/cocogitto-action@main
+        with:
+          check: true
+  conventional_commit_pr:
+    name: PR conventional commit check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+          # Fetch all commits to generate the changelog
+          fetch-depth: 0
+          # pick the pr HEAD instead of the merge commit
+          ref: ${{ github.event.pull_request.head.sha }}
       - name: Conventional commit check
         uses: cocogitto/cocogitto-action@main
         with:

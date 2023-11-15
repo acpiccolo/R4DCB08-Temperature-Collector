@@ -1,25 +1,8 @@
-<p align="center">
-  <a href="https://github.com/acpiccolo/R4DCB08-Temperature-Collector/actions"
-    ><img
-      src="https://github.com/acpiccolo/R4DCB08-Temperature-Collector/actions/workflows/check.yml/badge.svg?branch=main"
-      alt="GitHub Actions workflow status"
-  /></a>
-  <a href="https://conventionalcommits.org"
-    ><img
-      src="https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg"
-      alt="Conventional commits"
-  /></a>
-  <a href="https://github.com/acpiccolo/R4DCB08-Temperature-Collector/blob/main/LICENSE-MIT"
-    ><img
-      src="https://img.shields.io/github/license/acpiccolo/R4DCB08-Temperature-Collector"
-      alt="Repository license"
-  /></a>
-  <a href="https://github.com/acpiccolo/R4DCB08-Temperature-Collector/blob/main/LICENSE-APACHE"
-    ><img
-      src="https://img.shields.io/github/license/acpiccolo/R4DCB08-Temperature-Collector"
-      alt="Repository license"
-  /></a>
-</p>
+[![CI](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/actions/workflows/check.yml/badge.svg)](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/actions/workflows/check.yml)
+[![dependency status](https://deps.rs/repo/github/acpiccolo/R4DCB08-Temperature-Collector/status.svg)](https://deps.rs/repo/github/acpiccolo/R4DCB08-Temperature-Collector)
+[![CI](https://img.shields.io/badge/License-MIT-blue.svg)](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/blob/main/LICENSE-MIT)
+[![CI](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/blob/main/LICENSE-APACHE)
+[![CI](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
 # R4DCB08 temperature collector
 This RUST project can read and write a R4DCB08 temperature collector/monitor from the command line.

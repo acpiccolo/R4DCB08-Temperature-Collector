@@ -50,6 +50,30 @@ impl BaudRate {
             r4dcb08_lib::BaudRate::B19200 => 19200,
         }
     }
+
+    pub fn minimum_rtu_delay(&self) -> Duration {
+        // https://minimalmodbus.readthedocs.io/en/stable/serialcommunication.html#timing-of-the-serial-communications
+
+        fn calc(rate: u64) -> Duration {
+            let bit_time = Duration::from_secs_f64(1.0 / rate as f64);
+            let char_time = bit_time * 11;
+            let result = Duration::from_millis((char_time.as_secs_f64() * 3.5 * 1_000.0) as u64);
+            let min_duration = Duration::from_micros(1_750);
+            if result < min_duration {
+                min_duration
+            } else {
+                result
+            }
+        }
+
+        match self.0 {
+            r4dcb08_lib::BaudRate::B1200 => calc(1200),
+            r4dcb08_lib::BaudRate::B2400 => calc(2400),
+            r4dcb08_lib::BaudRate::B4800 => calc(4800),
+            r4dcb08_lib::BaudRate::B9600 => calc(9600),
+            r4dcb08_lib::BaudRate::B19200 => calc(19200),
+        }
+    }
 }
 
 impl Deref for BaudRate {
@@ -161,12 +185,15 @@ struct CliArgs {
     #[command(subcommand)]
     pub connection: CliConnection,
 
-    /// Modbus timeout in seconds
-    #[arg(long, default_value_t = 2)]
+    /// Modbus timeout in milliseconds
+    #[arg(long, default_value_t = 200)]
     timeout: u16,
 
+    // According to MODBUS specification:
+    // Wait at least 3.5 char between frames
+    // However, some USB - RS485 dongles requires at least 10ms to switch between TX and RX, so use a save delay between frames
     /// Delay between multiple modbus commands in milliseconds
-    #[arg(long, default_value_t = 10)]
+    #[arg(long, default_value_t = 50)]
     delay: u64,
 }
 
@@ -242,6 +269,18 @@ macro_rules! print_automatic_report {
     };
 }
 
+fn check_rtu_delay(delay: Duration, baud_rate: &BaudRate) -> Duration {
+    let min_rtu_delay = baud_rate.minimum_rtu_delay();
+    if delay < min_rtu_delay {
+        warn!(
+            "Your RTU delay of {:?} is below the minimum delay of {:?}, fallback to minimum",
+            delay, min_rtu_delay
+        );
+        return min_rtu_delay;
+    }
+    delay
+}
+
 fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8> {
     let mut d = R4DCB08::new(
         tokio_modbus::client::sync::rtu::connect_slave(
@@ -256,7 +295,7 @@ fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8>
             )
         })?,
     );
-    d.set_timeout(Duration::from_secs(args.timeout as u64));
+    d.set_timeout(Duration::from_millis(args.timeout as u64));
     let rsp = d
         .read_address()
         .with_context(|| "Cannot read RS485 address")?;
@@ -266,8 +305,7 @@ fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8>
 fn main() -> Result<()> {
     let args = CliArgs::parse();
 
-    // https://minimalmodbus.readthedocs.io/en/stable/serialcommunication.html#timing-of-the-serial-communications
-    let delay = std::time::Duration::from_millis(args.delay);
+    let mut delay = std::time::Duration::from_millis(args.delay);
 
     let _log_handle = logging_init(args.verbose.log_level_filter());
 
@@ -286,6 +324,7 @@ fn main() -> Result<()> {
         for baud_rate in BaudRate::iter() {
             print!("Scan RTU {} baud rate {} ... ", device, baud_rate.as_u32());
             stdout().flush().unwrap();
+            let delay = check_rtu_delay(delay, &baud_rate);
             match rtu_scan(device, &baud_rate, &args) {
                 Ok(address) => {
                     println!("succeeded");
@@ -344,6 +383,7 @@ fn main() -> Result<()> {
                 address,
                 baud_rate
             );
+            delay = check_rtu_delay(delay, &BaudRate::from_u32(*baud_rate)?);
             (
                 R4DCB08::new(
                     tokio_modbus::client::sync::rtu::connect_slave(
@@ -359,7 +399,7 @@ fn main() -> Result<()> {
         }
         CliConnection::RtuScan { .. } => unreachable!(),
     };
-    d.set_timeout(Duration::from_secs(args.timeout as u64));
+    d.set_timeout(Duration::from_millis(args.timeout as u64));
 
     match command {
         CliCommands::Read => {
@@ -459,4 +499,23 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rtu_delay() {
+        for baud_rate in BaudRate::iter() {
+            match baud_rate.as_u32() {
+                1200 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 32),
+                2400 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 16),
+                4800 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 8),
+                9600 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 4),
+                19200 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 2),
+                _ => unreachable!(),
+            }
+        }
+    }
 }

@@ -71,7 +71,7 @@ pub fn write_temperature_correction_check_channel(channel: u8) -> std::result::R
     }
 }
 
-pub fn read_automatic_recort_decode_duration(value: u16) -> Duration {
+pub fn read_automatic_report_decode_duration(value: u16) -> Duration {
     Duration::from_secs(value as u64)
 }
 pub fn write_automatic_report_encode_duration(value: Duration) -> Result<u16, Error> {
@@ -159,13 +159,13 @@ mod tests {
 
     #[test]
     fn write_automatic_report_encode_duration_test() {
-        assert_eq!(read_automatic_recort_decode_duration(0), Duration::ZERO);
+        assert_eq!(read_automatic_report_decode_duration(0), Duration::ZERO);
         assert_eq!(
-            read_automatic_recort_decode_duration(1),
+            read_automatic_report_decode_duration(1),
             Duration::from_secs(1)
         );
         assert_eq!(
-            read_automatic_recort_decode_duration(255),
+            read_automatic_report_decode_duration(255),
             Duration::from_secs(255)
         );
 

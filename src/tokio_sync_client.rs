@@ -65,7 +65,7 @@ impl R4DCB08 {
     /// Read temperature automatic reporting
     pub fn read_automatic_report(&mut self) -> Result<Duration> {
         let rsp = self.ctx.read_holding_registers(0x00FD, 2)?;
-        Ok(imp::read_automatic_recort_decode_duration(
+        Ok(imp::read_automatic_report_decode_duration(
             *rsp.first().expect("Result on success expected"),
         ))
     }

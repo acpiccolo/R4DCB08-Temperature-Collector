@@ -19,7 +19,10 @@ impl R4DCB08 {
     ///
     /// The returned temperature is corrected by the temperature correction
     pub async fn read_temperature(&mut self) -> Result<Vec<f32>> {
-        let rsp = self.ctx.read_holding_registers(0x0000, 8).await?;
+        let rsp = self
+            .ctx
+            .read_holding_registers(0x0000, imp::NUMBER_OF_CHANNELS as u16)
+            .await?;
         Ok(rsp
             .iter()
             .map(|value| imp::degree_celsius_decode(*value))
@@ -28,7 +31,10 @@ impl R4DCB08 {
 
     /// Read the current temperature correction values form all channels in °C.
     pub async fn read_temperature_correction(&mut self) -> Result<Vec<f32>> {
-        let rsp = self.ctx.read_holding_registers(0x0008, 8).await?;
+        let rsp = self
+            .ctx
+            .read_holding_registers(0x0008, imp::NUMBER_OF_CHANNELS as u16)
+            .await?;
         Ok(rsp
             .iter()
             .map(|value| imp::degree_celsius_decode(*value))

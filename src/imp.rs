@@ -29,6 +29,7 @@ impl BaudRate {
     }
 }
 
+pub const NUMBER_OF_CHANNELS: u8 = 8;
 pub const FACTORY_DEFAULT_BAUD_RATE: &BaudRate = &BaudRate::B9600;
 pub const FACTORY_DEFAULT_ADDRESS: u8 = 0x01;
 pub const READ_ADDRESS_BROADCAST_ADDRESS: u8 = 0xFF;
@@ -64,7 +65,7 @@ pub fn degree_celsius_encode(value: f32) -> std::result::Result<u16, Error> {
 }
 
 pub fn write_temperature_correction_check_channel(channel: u8) -> std::result::Result<(), Error> {
-    if (0..=7).contains(&channel) {
+    if (0..=NUMBER_OF_CHANNELS - 1).contains(&channel) {
         Ok(())
     } else {
         Err(Error::RangeError)

@@ -302,6 +302,15 @@ fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8>
     Ok(rsp)
 }
 
+fn confirm_only_one_module_connected() -> Result<bool> {
+    println!("Use this command only if ONLY ONE temperature module is connected to the RS485 bus!");
+    Ok(Confirm::new()
+        .with_prompt("Do you want to continue?")
+        .default(false)
+        .show_default(true)
+        .interact()?)
+}
+
 fn main() -> Result<()> {
     let args = CliArgs::parse();
 
@@ -310,15 +319,7 @@ fn main() -> Result<()> {
     let _log_handle = logging_init(args.verbose.log_level_filter());
 
     if let CliConnection::RtuScan { device } = &args.connection {
-        println!(
-            "Use this command only if ONLY ONE temperature module is connected to the RS485 bus!"
-        );
-        let confirmation = Confirm::new()
-            .with_prompt("Do you want to continue?")
-            .default(false)
-            .show_default(true)
-            .interact()?;
-        if !confirmation {
+        if !confirm_only_one_module_connected()? {
             return Ok(());
         }
         for baud_rate in BaudRate::iter() {
@@ -366,6 +367,9 @@ fn main() -> Result<()> {
             command,
         } => {
             let address = if command == &CliCommands::QueryAddress {
+                if !confirm_only_one_module_connected()? {
+                    return Ok(());
+                }
                 if *address != r4dcb08_lib::READ_ADDRESS_BROADCAST_ADDRESS {
                     info!(
                         "Ignore address {:#04x} use broadcast address {:#04x}",

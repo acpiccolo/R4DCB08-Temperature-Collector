@@ -84,10 +84,18 @@ impl Deref for BaudRate {
     }
 }
 
+fn default_device_name() -> String {
+    if cfg!(target_os = "windows") {
+        String::from("COM1")
+    } else {
+        String::from("/dev/ttyUSB0")
+    }
+}
+
 #[derive(Subcommand, Debug, Clone, PartialEq)]
-pub enum CliConnection {
+enum CliConnection {
     /// Use Modbus/TCP connection
-    TCP {
+    Tcp {
         // TCP address (e.g. 192.168.0.222:502)
         address: String,
 
@@ -95,9 +103,9 @@ pub enum CliConnection {
         command: CliCommands,
     },
     /// Use Modbus/RTU connection
-    RTU {
+    Rtu {
         /// Device
-        #[arg(short, long, default_value_t = String::from("/dev/ttyUSB0"))]
+        #[arg(short, long, default_value_t = default_device_name())]
         device: String,
 
         /// Baud rate any of 1200, 2400, 4800, 9600, 19200
@@ -114,13 +122,13 @@ pub enum CliConnection {
     /// Scan for a R4DCB08 temperature collector on any supported baud rate and query the Modbus RS485 address.
     RtuScan {
         /// Device
-        #[arg(short, long, default_value_t = String::from("/dev/ttyUSB0"))]
+        #[arg(short, long, default_value_t = default_device_name())]
         device: String,
     },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq)]
-pub enum CliCommands {
+enum CliCommands {
     /// Read the current temperature from all channels
     Read,
 
@@ -347,7 +355,7 @@ fn main() -> Result<()> {
     }
 
     let (mut d, command) = match &args.connection {
-        CliConnection::TCP { address, command } => {
+        CliConnection::Tcp { address, command } => {
             let socket_addr = address
                 .parse()
                 .with_context(|| format!("Cannot parse address {}", address))?;
@@ -360,7 +368,7 @@ fn main() -> Result<()> {
                 command,
             )
         }
-        CliConnection::RTU {
+        CliConnection::Rtu {
             device,
             baud_rate,
             address,

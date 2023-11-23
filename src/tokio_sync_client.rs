@@ -15,11 +15,11 @@ impl R4DCB08 {
     }
 
     /// Sets the modbus context timeout.
-    pub fn set_timeout(&mut self, timeout: std::time::Duration) {
+    pub fn set_timeout(&mut self, timeout: Duration) {
         self.ctx.set_timeout(timeout);
     }
 
-    pub fn timeout(&self) -> Option<std::time::Duration> {
+    pub fn timeout(&self) -> Option<Duration> {
         self.ctx.timeout()
     }
 

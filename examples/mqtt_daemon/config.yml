@@ -1,0 +1,10 @@
+mqtt:
+  url: mqtt://192.168.3.31
+  username: mymqtt # optional
+  password: grieving3.4Pain.Playa # optional
+modbus:
+  #device: /dev/ttyUSB0
+  #baud_rate: 9600
+  #timeout: 5s
+  #address: 0x01
+  #delay: 10ms

@@ -1,0 +1,45 @@
+[package]
+name = "tempcol"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "r4dcb08_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tempcol"
+path = "src/main.rs"
+required-features = ["bin-dependencies"]
+
+[features]
+default = ["tokio-rtu-sync", "tokio-rtu", "bin-dependencies"]
+bin-dependencies = [
+    "dep:anyhow",
+    "tokio-rtu-sync",
+    "tokio-tcp-sync",
+    "dep:log",
+    "dep:tokio-serial",
+    "clap/derive",
+    "dep:clap-verbosity-flag",
+    "dep:clap-num",
+    "dep:flexi_logger",
+    "dep:dialoguer",
+]
+tokio-rtu-sync = ["tokio-modbus/rtu-sync", "dep:tokio-serial"]
+tokio-rtu = ["tokio-modbus/rtu", "dep:tokio-serial"]
+tokio-tcp-sync = ["tokio/net", "tokio-modbus/tcp-sync"]
+tokio-tcp = ["tokio/net", "tokio-modbus/tcp"]
+
+[dependencies]
+tokio-modbus = { version = "0.11", default-features = false, optional = true }
+tokio-serial = { version = "5", optional = true }
+tokio = { version = "1", default-features = false, optional = true }
+# Requirements for bin
+anyhow = { version = "1", optional = true }
+log = { version = "0.4", optional = true }
+clap = { version = "4", optional = true }
+clap-verbosity-flag = { version = "2", optional = true }
+clap-num = { version = "1", optional = true }
+flexi_logger = { version = "0.27", optional = true }
+dialoguer = { version = "0.11", optional = true }

@@ -488,7 +488,7 @@ fn main() -> Result<()> {
             }
             std::thread::sleep(delay);
             if let Err(error) = d.factory_reset() {
-                let ignore_error = if let r4dcb08_lib::Error::Error(
+                let ignore_error = if let r4dcb08_lib::tokio_error::Error::ModbusError(
                     tokio_modbus::Error::Transport(error),
                 ) = &error
                 {

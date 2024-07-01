@@ -1,8 +1,8 @@
-use crate::{protocol as proto, Error};
+use crate::protocol as proto;
 use std::time::Duration;
 use tokio_modbus::prelude::{SyncReader, SyncWriter};
 
-type Result<T> = std::result::Result<T, Error>;
+type Result<T> = std::result::Result<T, crate::tokio_error::Error>;
 
 pub struct R4DCB08 {
     ctx: tokio_modbus::client::sync::Context,

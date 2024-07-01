@@ -488,7 +488,10 @@ fn main() -> Result<()> {
             }
             std::thread::sleep(delay);
             if let Err(error) = d.factory_reset() {
-                let ignore_error = if let r4dcb08_lib::Error::Io(error) = &error {
+                let ignore_error = if let r4dcb08_lib::Error::Error(
+                    tokio_modbus::Error::Transport(error),
+                ) = &error
+                {
                     if error.kind() == std::io::ErrorKind::TimedOut {
                         // After the a successful factory reset we get no response :-(
                         debug!("Reset to factory settings returned TimeOut error, can be ignored");

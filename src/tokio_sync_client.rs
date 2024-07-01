@@ -31,7 +31,7 @@ impl R4DCB08 {
         let rsp = self.ctx.read_holding_registers(
             proto::READ_TEMPERATURE_REG_ADDR,
             proto::READ_TEMPERATURE_REG_QUAN,
-        )?;
+        )??;
         Ok(rsp
             .iter()
             .map(|value| proto::degree_celsius_decode(*value))
@@ -43,7 +43,7 @@ impl R4DCB08 {
         let rsp = self.ctx.read_holding_registers(
             proto::READ_TEMPERATURE_CORRECTION_REG_ADDR,
             proto::READ_TEMPERATURE_CORRECTION_REG_QUAN,
-        )?;
+        )??;
         Ok(rsp
             .iter()
             .map(|value| proto::degree_celsius_decode(*value))
@@ -65,7 +65,7 @@ impl R4DCB08 {
         Ok(self.ctx.write_single_register(
             proto::WRITE_TEMPERATURE_CORRECTION_REG_ADDR + channel as u16,
             proto::degree_celsius_encode(correction)?,
-        )?)
+        )??)
     }
 
     /// Read temperature automatic reporting
@@ -73,7 +73,7 @@ impl R4DCB08 {
         let rsp = self.ctx.read_holding_registers(
             proto::READ_AUTOMATIC_REPORT_REG_ADDR,
             proto::READ_AUTOMATIC_REPORT_REG_QUAN,
-        )?;
+        )??;
         Ok(proto::read_automatic_report_decode_duration(
             *rsp.first().expect("Result on success expected"),
         ))
@@ -88,7 +88,7 @@ impl R4DCB08 {
         Ok(self.ctx.write_single_register(
             proto::WRITE_AUTOMATIC_REPORT_REG_ADDR,
             proto::write_automatic_report_encode_duration(report)?,
-        )?)
+        )??)
     }
 
     /// Read the current baud rate
@@ -96,7 +96,7 @@ impl R4DCB08 {
         let rsp = self.ctx.read_holding_registers(
             proto::READ_BAUD_RATE_REG_ADDR,
             proto::READ_BAUD_RATE_REG_QUAN,
-        )?;
+        )??;
         Ok(proto::BaudRate::decode(
             *rsp.first().expect("Result on success expected"),
         ))
@@ -108,7 +108,7 @@ impl R4DCB08 {
     pub fn set_baud_rate(&mut self, baud_rate: proto::BaudRate) -> Result<()> {
         Ok(self
             .ctx
-            .write_single_register(proto::WRITE_BAUD_RATE_REG_ADDR, baud_rate.encode())?)
+            .write_single_register(proto::WRITE_BAUD_RATE_REG_ADDR, baud_rate.encode())??)
     }
 
     /// Reset the device to the factory default settings.
@@ -116,7 +116,7 @@ impl R4DCB08 {
         Ok(self.ctx.write_single_register(
             proto::WRITE_FACTORY_RESET_REG_ADDR,
             proto::WRITE_FACTORY_RESET_REG_DATA,
-        )?)
+        )??)
     }
 
     /// Reads the current Modbus address
@@ -127,7 +127,7 @@ impl R4DCB08 {
     pub fn read_address(&mut self) -> Result<u8> {
         let rsp = self
             .ctx
-            .read_holding_registers(proto::READ_ADDRESS_REG_ADDR, proto::READ_ADDRESS_REG_QUAN)?;
+            .read_holding_registers(proto::READ_ADDRESS_REG_ADDR, proto::READ_ADDRESS_REG_QUAN)??;
         Ok(*rsp.first().expect("Result on success expected") as u8)
     }
 
@@ -138,7 +138,7 @@ impl R4DCB08 {
         self.ctx.write_single_register(
             proto::WRITE_ADDRESS_REG_ADDR,
             proto::write_address_encode_address(address)?,
-        )?;
+        )??;
         Ok(())
     }
 }

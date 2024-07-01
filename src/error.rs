@@ -3,7 +3,8 @@ use std::fmt;
 #[derive(Debug)]
 pub enum Error {
     RangeError,
-    Io(std::io::Error),
+    Error(tokio_modbus::Error),
+    Exception(tokio_modbus::Exception),
 }
 
 impl std::error::Error for Error {}
@@ -13,14 +14,21 @@ impl fmt::Display for Error {
         match *self {
             // Both underlying errors already impl `Display`, so we defer to
             // their implementations.
-            Error::Io(ref err) => write!(f, "IO error: {}", err),
+            Error::Error(ref err) => write!(f, "Modbus error: {}", err),
+            Error::Exception(ref err) => write!(f, "Modbus exception: {}", err),
             Error::RangeError => write!(f, "Value out of range"),
         }
     }
 }
 
-impl From<std::io::Error> for Error {
-    fn from(err: std::io::Error) -> Error {
-        Error::Io(err)
+impl From<tokio_modbus::Error> for Error {
+    fn from(err: tokio_modbus::Error) -> Error {
+        Error::Error(err)
+    }
+}
+
+impl From<tokio_modbus::Exception> for Error {
+    fn from(err: tokio_modbus::Exception) -> Error {
+        Error::Exception(err)
     }
 }

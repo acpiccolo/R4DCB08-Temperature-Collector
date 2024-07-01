@@ -25,7 +25,7 @@ impl R4DCB08 {
                 proto::READ_TEMPERATURE_REG_ADDR,
                 proto::READ_TEMPERATURE_REG_QUAN,
             )
-            .await?;
+            .await??;
         Ok(rsp
             .iter()
             .map(|value| proto::degree_celsius_decode(*value))
@@ -40,7 +40,7 @@ impl R4DCB08 {
                 proto::READ_TEMPERATURE_CORRECTION_REG_ADDR,
                 proto::READ_TEMPERATURE_CORRECTION_REG_QUAN,
             )
-            .await?;
+            .await??;
         Ok(rsp
             .iter()
             .map(|value| proto::degree_celsius_decode(*value))
@@ -65,7 +65,7 @@ impl R4DCB08 {
                 proto::WRITE_TEMPERATURE_CORRECTION_REG_ADDR + channel as u16,
                 proto::degree_celsius_encode(correction)?,
             )
-            .await?)
+            .await??)
     }
 
     /// Read temperature automatic reporting
@@ -76,7 +76,7 @@ impl R4DCB08 {
                 proto::READ_AUTOMATIC_REPORT_REG_ADDR,
                 proto::READ_AUTOMATIC_REPORT_REG_QUAN,
             )
-            .await?;
+            .await??;
         Ok(proto::read_automatic_report_decode_duration(
             *rsp.first().expect("Result on success expected"),
         ))
@@ -94,7 +94,7 @@ impl R4DCB08 {
                 proto::WRITE_AUTOMATIC_REPORT_REG_ADDR,
                 proto::write_automatic_report_encode_duration(report)?,
             )
-            .await?)
+            .await??)
     }
 
     /// Read the current baud rate
@@ -105,7 +105,7 @@ impl R4DCB08 {
                 proto::READ_BAUD_RATE_REG_ADDR,
                 proto::READ_BAUD_RATE_REG_QUAN,
             )
-            .await?;
+            .await??;
         Ok(proto::BaudRate::decode(
             *rsp.first().expect("Result on success expected"),
         ))
@@ -118,7 +118,7 @@ impl R4DCB08 {
         Ok(self
             .ctx
             .write_single_register(proto::WRITE_BAUD_RATE_REG_ADDR, baud_rate.encode())
-            .await?)
+            .await??)
     }
 
     /// Reset the device to the factory default settings.
@@ -129,7 +129,7 @@ impl R4DCB08 {
                 proto::WRITE_FACTORY_RESET_REG_ADDR,
                 proto::WRITE_FACTORY_RESET_REG_DATA,
             )
-            .await?)
+            .await??)
     }
 
     /// Reads the current Modbus address
@@ -141,7 +141,7 @@ impl R4DCB08 {
         let rsp = self
             .ctx
             .read_holding_registers(proto::READ_ADDRESS_REG_ADDR, proto::READ_ADDRESS_REG_QUAN)
-            .await?;
+            .await??;
         Ok(*rsp.first().expect("Result on success expected") as u8)
     }
 
@@ -155,6 +155,6 @@ impl R4DCB08 {
                 proto::WRITE_ADDRESS_REG_ADDR,
                 proto::write_address_encode_address(address)?,
             )
-            .await?)
+            .await??)
     }
 }

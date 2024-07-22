@@ -9,11 +9,11 @@ pub enum Error {
     )]
     ChannelOutOfRange(u8),
     #[error(
-        "The degree celcius value {0} is outside the permissible range of {} to {}",
+        "The degree celsius value {0} is outside the permissible range of {} to {}",
         protocol::DEGREE_CELSIUS_MIN,
         protocol::DEGREE_CELSIUS_MAX
     )]
-    DegreeCelciusOutOfRange(f32),
+    DegreeCelsiusOutOfRange(f32),
     #[error(
         "The duration value {0} is outside the permissible range of {} to {}",
         protocol::DURATION_MIN,

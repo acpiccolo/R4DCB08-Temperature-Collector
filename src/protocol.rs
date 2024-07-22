@@ -80,7 +80,7 @@ pub const DEGREE_CELSIUS_MIN: f32 = -3276.7;
 pub const DEGREE_CELSIUS_MAX: f32 = 3276.7;
 pub fn degree_celsius_encode(value: f32) -> std::result::Result<u16, Error> {
     if !(DEGREE_CELSIUS_MIN..=DEGREE_CELSIUS_MAX).contains(&value) {
-        Err(Error::DegreeCelciusOutOfRange(value))
+        Err(Error::DegreeCelsiusOutOfRange(value))
     } else if value >= 0.0 {
         Ok((value * 10.0) as u16)
     } else {
@@ -144,7 +144,7 @@ mod tests {
         assert!(matches!(degree_celsius_encode(3276.7), Ok(32767)));
         assert!(matches!(
             degree_celsius_encode(3276.8),
-            Err(Error::DegreeCelciusOutOfRange(..))
+            Err(Error::DegreeCelsiusOutOfRange(..))
         ));
 
         // minimum
@@ -152,7 +152,7 @@ mod tests {
         assert!(matches!(degree_celsius_encode(-3276.7), Ok(32769)));
         assert!(matches!(
             degree_celsius_encode(-3276.8),
-            Err(Error::DegreeCelciusOutOfRange(..))
+            Err(Error::DegreeCelsiusOutOfRange(..))
         ));
 
         assert!(degree_celsius_decode(32768).is_nan());

@@ -76,9 +76,11 @@ pub fn degree_celsius_decode(value: u16) -> f32 {
     }
 }
 
+pub const DEGREE_CELSIUS_MIN: f32 = -3276.7;
+pub const DEGREE_CELSIUS_MAX: f32 = 3276.7;
 pub fn degree_celsius_encode(value: f32) -> std::result::Result<u16, Error> {
-    if !(-3276.7..=3276.7).contains(&value) {
-        Err(Error::RangeError)
+    if !(DEGREE_CELSIUS_MIN..=DEGREE_CELSIUS_MAX).contains(&value) {
+        Err(Error::DegreeCelciusOutOfRange(value))
     } else if value >= 0.0 {
         Ok((value * 10.0) as u16)
     } else {
@@ -86,30 +88,36 @@ pub fn degree_celsius_encode(value: f32) -> std::result::Result<u16, Error> {
     }
 }
 
+pub const CHANNELS_MIN: u8 = 0;
+pub const CHANNELS_MAX: u8 = NUMBER_OF_CHANNELS - 1;
 pub fn write_temperature_correction_check_channel(channel: u8) -> std::result::Result<(), Error> {
-    if (0..=NUMBER_OF_CHANNELS - 1).contains(&channel) {
+    if (CHANNELS_MIN..=CHANNELS_MAX).contains(&channel) {
         Ok(())
     } else {
-        Err(Error::RangeError)
+        Err(Error::ChannelOutOfRange(channel))
     }
 }
 
+pub const DURATION_MIN: u8 = 0;
+pub const DURATION_MAX: u8 = 255;
 pub fn read_automatic_report_decode_duration(value: u16) -> Duration {
     Duration::from_secs(value as u64)
 }
 pub fn write_automatic_report_encode_duration(value: Duration) -> Result<u16, Error> {
-    if value.as_secs() <= 255 {
+    if (DURATION_MIN as u64..=DURATION_MAX as u64).contains(&value.as_secs()) {
         Ok(value.as_secs().try_into().unwrap())
     } else {
-        Err(Error::RangeError)
+        Err(Error::DurationOutOfRange(value.as_secs() as u8))
     }
 }
 
+pub const ADDRESS_MIN: u8 = 1;
+pub const ADDRESS_MAX: u8 = 247;
 pub fn write_address_encode_address(address: u8) -> std::result::Result<u16, Error> {
-    if (1..=247).contains(&address) {
+    if (ADDRESS_MIN..=ADDRESS_MAX).contains(&address) {
         Ok(address as u16)
     } else {
-        Err(Error::RangeError)
+        Err(Error::AddressOutOfRange(address))
     }
 }
 
@@ -136,7 +144,7 @@ mod tests {
         assert!(matches!(degree_celsius_encode(3276.7), Ok(32767)));
         assert!(matches!(
             degree_celsius_encode(3276.8),
-            Err(Error::RangeError)
+            Err(Error::DegreeCelciusOutOfRange(..))
         ));
 
         // minimum
@@ -144,7 +152,7 @@ mod tests {
         assert!(matches!(degree_celsius_encode(-3276.7), Ok(32769)));
         assert!(matches!(
             degree_celsius_encode(-3276.8),
-            Err(Error::RangeError)
+            Err(Error::DegreeCelciusOutOfRange(..))
         ));
 
         assert!(degree_celsius_decode(32768).is_nan());
@@ -154,13 +162,13 @@ mod tests {
     fn write_address_encode_address_test() {
         assert!(matches!(
             write_address_encode_address(0),
-            Err(Error::RangeError)
+            Err(Error::AddressOutOfRange(..))
         ));
         assert!(matches!(write_address_encode_address(1), Ok(1)));
         assert!(matches!(write_address_encode_address(247), Ok(247)));
         assert!(matches!(
             write_address_encode_address(248),
-            Err(Error::RangeError)
+            Err(Error::AddressOutOfRange(..))
         ));
     }
 
@@ -176,7 +184,7 @@ mod tests {
         ));
         assert!(matches!(
             write_temperature_correction_check_channel(8),
-            Err(Error::RangeError)
+            Err(Error::ChannelOutOfRange(..))
         ));
     }
 
@@ -210,7 +218,7 @@ mod tests {
         ));
         assert!(matches!(
             write_automatic_report_encode_duration(Duration::from_secs(256)),
-            Err(Error::RangeError)
+            Err(Error::DurationOutOfRange(..))
         ));
     }
 }

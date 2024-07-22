@@ -1,16 +1,29 @@
-use std::fmt;
+use crate::protocol;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    RangeError,
-}
-
-impl std::error::Error for Error {}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            Error::RangeError => write!(f, "Value out of range"),
-        }
-    }
+    #[error(
+        "The channel value {0} is outside the permissible range of {} to {}",
+        protocol::CHANNELS_MIN,
+        protocol::CHANNELS_MAX
+    )]
+    ChannelOutOfRange(u8),
+    #[error(
+        "The degree celcius value {0} is outside the permissible range of {} to {}",
+        protocol::DEGREE_CELSIUS_MIN,
+        protocol::DEGREE_CELSIUS_MAX
+    )]
+    DegreeCelciusOutOfRange(f32),
+    #[error(
+        "The duration value {0} is outside the permissible range of {} to {}",
+        protocol::DURATION_MIN,
+        protocol::DURATION_MAX
+    )]
+    DurationOutOfRange(u8),
+    #[error(
+        "The address value {0} is outside the permissible range of {} to {}",
+        protocol::ADDRESS_MIN,
+        protocol::ADDRESS_MAX
+    )]
+    AddressOutOfRange(u8),
 }

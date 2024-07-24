@@ -1,7 +1,7 @@
 use crate::Error;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum BaudRate {
     B1200 = 0,

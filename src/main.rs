@@ -1,16 +1,21 @@
 use anyhow::{bail, Context, Result};
 use clap::{Parser, Subcommand};
-use clap_num::maybe_hex;
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use dialoguer::Confirm;
 use flexi_logger::{Logger, LoggerHandle};
 use log::*;
 use r4dcb08_lib::{protocol as proto, tokio_sync_client::R4DCB08};
 use std::io::{stdout, Write};
-use std::{ops::Deref, panic, time::Duration};
+use std::{fmt, ops::Deref, panic, time::Duration};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct BaudRate(proto::BaudRate);
+
+impl fmt::Display for BaudRate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_u16())
+    }
+}
 
 impl BaudRate {
     pub fn iter() -> core::array::IntoIter<Self, 5> {
@@ -28,20 +33,18 @@ impl BaudRate {
         Self(baud_rate)
     }
 
-    pub fn from_u32(baud_rate: u32) -> Result<Self> {
+    pub fn from_u16(baud_rate: u16) -> Result<Self> {
         match baud_rate {
             1200 => Ok(Self(proto::BaudRate::B1200)),
             2400 => Ok(Self(proto::BaudRate::B2400)),
             4800 => Ok(Self(proto::BaudRate::B4800)),
             9600 => Ok(Self(proto::BaudRate::B9600)),
             19200 => Ok(Self(proto::BaudRate::B19200)),
-            _ => bail!(
-                "Unexpected baud rate! The new baud rate must by any value of 1200, 2400, 4800, 9600, 19200."
-            ),
+            _ => bail!("Baud rate must by any value of 1200, 2400, 4800, 9600, 19200."),
         }
     }
 
-    pub fn as_u32(&self) -> u32 {
+    pub fn as_u16(&self) -> u16 {
         match self.0 {
             proto::BaudRate::B1200 => 1200,
             proto::BaudRate::B2400 => 2400,
@@ -66,13 +69,7 @@ impl BaudRate {
             }
         }
 
-        match self.0 {
-            proto::BaudRate::B1200 => calc(1200),
-            proto::BaudRate::B2400 => calc(2400),
-            proto::BaudRate::B4800 => calc(4800),
-            proto::BaudRate::B9600 => calc(9600),
-            proto::BaudRate::B19200 => calc(19200),
-        }
+        calc(self.as_u16() as u64)
     }
 }
 
@@ -89,6 +86,35 @@ fn default_device_name() -> String {
         String::from("COM1")
     } else {
         String::from("/dev/ttyUSB0")
+    }
+}
+
+fn parse_channel(s: &str) -> Result<u8, String> {
+    clap_num::number_range(s, proto::CHANNELS_MIN, proto::CHANNELS_MAX)
+}
+
+fn parse_address(s: &str) -> Result<u8, String> {
+    clap_num::maybe_hex_range(s, proto::ADDRESS_MIN, proto::ADDRESS_MAX)
+}
+
+fn parse_baud_rate(s: &str) -> Result<BaudRate, String> {
+    let val = s.parse::<u16>().map_err(|e| format!("{e}"))?;
+    let val = BaudRate::from_u16(val).map_err(|e| format!("{e}"))?;
+    Ok(val)
+}
+
+fn parse_degree_celsius(s: &str) -> Result<f32, String> {
+    // clap_num::number_range(s, proto::DEGREE_CELSIUS_MIN, proto::DEGREE_CELSIUS_MAX)
+    let val = s.parse::<f32>().map_err(|e| format!("{e}"))?;
+    if val > proto::DEGREE_CELSIUS_MAX {
+        Err(format!("exceeds maximum of {}", proto::DEGREE_CELSIUS_MAX))
+    } else if val < proto::DEGREE_CELSIUS_MIN {
+        Err(format!(
+            "less than minimum of {}",
+            proto::DEGREE_CELSIUS_MIN
+        ))
+    } else {
+        Ok(val)
     }
 }
 
@@ -109,11 +135,11 @@ enum CliConnection {
         device: String,
 
         /// Baud rate any of 1200, 2400, 4800, 9600, 19200
-        #[arg(long, default_value_t = BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE).as_u32())]
-        baud_rate: u32,
+        #[arg(long, default_value_t = BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE), value_parser = parse_baud_rate)]
+        baud_rate: BaudRate,
 
         /// RS485 address from 1 to 247
-        #[arg(short, long, default_value_t = proto::FACTORY_DEFAULT_ADDRESS, value_parser=maybe_hex::<u8>)]
+        #[arg(short, long, default_value_t = proto::FACTORY_DEFAULT_ADDRESS, value_parser = parse_address)]
         address: u8,
 
         #[command(subcommand)]
@@ -151,21 +177,24 @@ enum CliCommands {
     /// Set the temperature correction per channel
     SetCorrection {
         /// Temperature sensore channel 0 to 7
+        #[arg(value_parser = parse_channel)]
         channel: u8,
         /// Correction value in °Celsius
+        #[arg(value_parser = parse_degree_celsius)]
         value: f32,
     },
 
     /// Set the baud rate. After the command you need to power up the module again!
     SetBaudRate {
         /// The new baud rate any value of 1200, 2400, 4800, 9600, 19200
-        new_baud_rate: u16,
+        #[arg(value_parser = parse_baud_rate)]
+        new_baud_rate: BaudRate,
     },
 
     /// Set the RS485 address
     SetAddress {
         /// The RS485 address can be from 1 to 247
-        #[arg(value_parser=maybe_hex::<u8>)]
+        #[arg(value_parser = parse_address)]
         address: u8,
     },
 
@@ -262,7 +291,7 @@ macro_rules! print_baud_rate {
         let rsp = $device
             .read_baud_rate()
             .with_context(|| "Cannot read baud rate")?;
-        println!("Baud rate: {}", BaudRate::from(rsp).as_u32());
+        println!("Baud rate: {}", BaudRate::from(rsp));
     };
 }
 macro_rules! print_automatic_report {
@@ -292,16 +321,10 @@ fn check_rtu_delay(delay: Duration, baud_rate: &BaudRate) -> Duration {
 fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8> {
     let mut d = R4DCB08::new(
         tokio_modbus::client::sync::rtu::connect_slave(
-            &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate.as_u32()),
+            &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate.as_u16() as u32),
             tokio_modbus::Slave(proto::READ_ADDRESS_BROADCAST_ADDRESS),
         )
-        .with_context(|| {
-            format!(
-                "Cannot open device {} baud rate {}",
-                device,
-                baud_rate.as_u32()
-            )
-        })?,
+        .with_context(|| format!("Cannot open device {} baud rate {}", device, baud_rate))?,
     );
     d.set_timeout(Duration::from_millis(args.timeout as u64));
     let rsp = d
@@ -331,14 +354,14 @@ fn main() -> Result<()> {
             return Ok(());
         }
         for baud_rate in BaudRate::iter() {
-            print!("Scan RTU {} baud rate {} ... ", device, baud_rate.as_u32());
+            print!("Scan RTU {} baud rate {} ... ", device, baud_rate);
             stdout().flush().unwrap();
             let delay = check_rtu_delay(delay, &baud_rate);
             match rtu_scan(device, &baud_rate, &args) {
                 Ok(address) => {
                     println!("succeeded");
                     println!("RS485 Address: {:#04x}", address);
-                    println!("Baud rate: {}", baud_rate.as_u32());
+                    println!("Baud rate: {}", baud_rate);
                     return Ok(());
                 }
                 Err(error) => {
@@ -395,11 +418,14 @@ fn main() -> Result<()> {
                 address,
                 baud_rate
             );
-            delay = check_rtu_delay(delay, &BaudRate::from_u32(*baud_rate)?);
+            delay = check_rtu_delay(delay, baud_rate);
             (
                 R4DCB08::new(
                     tokio_modbus::client::sync::rtu::connect_slave(
-                        &r4dcb08_lib::tokio_serial::serial_port_builder(device, *baud_rate),
+                        &r4dcb08_lib::tokio_serial::serial_port_builder(
+                            device,
+                            baud_rate.as_u16() as u32,
+                        ),
                         tokio_modbus::Slave(address),
                     )
                     .with_context(|| {
@@ -446,8 +472,7 @@ fn main() -> Result<()> {
                 .with_context(|| "Cannot set temperature correction")?;
         }
         CliCommands::SetBaudRate { new_baud_rate } => {
-            let baud_rate = BaudRate::from_u32(*new_baud_rate as u32)?;
-            d.set_baud_rate(*baud_rate)
+            d.set_baud_rate(**new_baud_rate)
                 .with_context(|| "Cannot set baud rate")?;
             println!("The baud rate will be updated when the module is powered up again!");
         }
@@ -467,7 +492,7 @@ fn main() -> Result<()> {
                 address={:#04x} | baud rate={} | temperature correction all channels=0.0 | automatic report=0 (disabled)\n\
                 \n\
                 After this operation, the device will no longer be responsive!\n\
-                You must power off and on again to complete the reset.", proto::FACTORY_DEFAULT_ADDRESS, BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE).as_u32()
+                You must power off and on again to complete the reset.", proto::FACTORY_DEFAULT_ADDRESS, BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE)
             );
             let confirmation = Confirm::new()
                 .with_prompt("Do you want to continue?")
@@ -523,7 +548,7 @@ mod tests {
     #[test]
     fn rtu_delay() {
         for baud_rate in BaudRate::iter() {
-            match baud_rate.as_u32() {
+            match baud_rate.as_u16() {
                 1200 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 32),
                 2400 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 16),
                 4800 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 8),

@@ -26,6 +26,7 @@ bin-dependencies = [
     "dep:flexi_logger",
     "dep:dialoguer",
     "dep:humantime",
+    "dep:paho-mqtt",
 ]
 tokio-rtu-sync = ["tokio-modbus/rtu-sync", "dep:tokio-serial"]
 tokio-rtu = ["tokio-modbus/rtu", "dep:tokio-serial"]
@@ -46,3 +47,4 @@ clap-num = { version = "1", optional = true }
 flexi_logger = { version = "0.28", optional = true }
 dialoguer = { version = "0.11", optional = true }
 humantime = { version = "2", optional = true }
+paho-mqtt = { version = "0.12", optional = true }

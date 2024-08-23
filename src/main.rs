@@ -4,6 +4,7 @@ use clap_verbosity_flag::{InfoLevel, Verbosity};
 use dialoguer::Confirm;
 use flexi_logger::{Logger, LoggerHandle};
 use log::*;
+use paho_mqtt as mqtt;
 use r4dcb08_lib::{protocol as proto, tokio_sync_client::R4DCB08};
 use std::io::{stdout, Write};
 use std::{fmt, ops::Deref, panic, time::Duration};
@@ -153,8 +154,46 @@ enum CliConnection {
     },
 }
 
+#[derive(Subcommand, Debug, Clone, PartialEq, Default)]
+enum DaemonMode {
+    #[default]
+    /// Print values to stdout [default]
+    Stdout,
+    /// Send values to a MQTT Broker
+    Mqtt {
+        /// URL to the MQTT broker like: mqtt://localhost:1883
+        url: String,
+
+        /// The user name for authentication with the broker
+        #[arg(short, long)]
+        username: Option<String>,
+
+        /// The password for authentication with the broker
+        #[arg(short, long)]
+        password: Option<String>,
+
+        /// MQTT topic
+        #[arg(long, default_value = "r4dcb08")]
+        topic: String,
+
+        /// Quality of service to use
+        #[arg(long, default_value = "0")]
+        qos: u8,
+    },
+}
+
 #[derive(Subcommand, Debug, Clone, PartialEq)]
 enum CliCommands {
+    /// Daemon mode to read the current temperature from all channels
+    Daemon {
+        /// Interval for repeated polling of the values
+        #[arg(value_parser = humantime::parse_duration, short, long, default_value = "2sec")]
+        poll_iterval: Duration,
+
+        #[command(subcommand)]
+        mode: DaemonMode,
+    },
+
     /// Read the current temperature from all channels
     Read,
 
@@ -440,6 +479,55 @@ fn main() -> Result<()> {
     d.set_timeout(args.timeout);
 
     match command {
+        CliCommands::Daemon { poll_iterval, mode } => match mode {
+            DaemonMode::Stdout => loop {
+                print_temperature!(&mut d);
+                std::thread::sleep(delay.max(*poll_iterval));
+            },
+            DaemonMode::Mqtt {
+                url,
+                username,
+                password,
+                topic,
+                qos,
+            } => {
+                let mut cli =
+                    mqtt::Client::new(url.clone()).with_context(|| "Error creating MQTT client")?;
+
+                // Use 5sec timeouts for sync calls.
+                cli.set_timeout(Duration::from_secs(5));
+
+                let mut conn_builder = mqtt::ConnectOptionsBuilder::new();
+                let mut conn_builder = conn_builder
+                    .keep_alive_interval(Duration::from_secs(20))
+                    .clean_session(true);
+
+                if let Some(user_name) = username {
+                    conn_builder = conn_builder.user_name(user_name)
+                }
+                if let Some(password) = password {
+                    conn_builder = conn_builder.password(password)
+                }
+                let conn_ops = conn_builder.finalize();
+
+                // Connect and wait for it to complete or fail.
+                // The default connection uses MQTT v3.x
+                cli.connect(conn_ops)
+                    .with_context(|| "MQTT client unable to connect")?;
+
+                loop {
+                    let reply = d.read_temperature()?;
+                    trace!("Temperature: {:?}", reply);
+                    for (channel, temperature) in reply.iter().enumerate() {
+                        let topic = format!("{topic}/{channel}");
+                        let msg = mqtt::Message::new(topic, temperature.to_string(), *qos as i32);
+                        cli.publish(msg)
+                            .with_context(|| "Cannot publish MQTT message")?;
+                    }
+                    std::thread::sleep(delay.max(*poll_iterval));
+                }
+            }
+        },
         CliCommands::Read => {
             print_temperature!(&mut d);
         }

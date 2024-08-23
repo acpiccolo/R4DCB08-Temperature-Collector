@@ -222,16 +222,16 @@ struct CliArgs {
     #[command(subcommand)]
     pub connection: CliConnection,
 
-    /// Modbus timeout in milliseconds
-    #[arg(long, default_value_t = 200)]
-    timeout: u16,
+    /// Serial Input/Output operations timeout
+    #[arg(value_parser = humantime::parse_duration, long, default_value = "200ms")]
+    timeout: Duration,
 
     // According to MODBUS specification:
     // Wait at least 3.5 char between frames
     // However, some USB - RS485 dongles requires at least 10ms to switch between TX and RX, so use a save delay between frames
-    /// Delay between multiple modbus commands in milliseconds
-    #[arg(long, default_value_t = 50)]
-    delay: u64,
+    /// Delay between multiple modbus commands
+    #[arg(value_parser = humantime::parse_duration, long, default_value = "50ms")]
+    delay: Duration,
 }
 
 fn logging_init(loglevel: LevelFilter) -> LoggerHandle {
@@ -326,7 +326,7 @@ fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8>
         )
         .with_context(|| format!("Cannot open device {} baud rate {}", device, baud_rate))?,
     );
-    d.set_timeout(Duration::from_millis(args.timeout as u64));
+    d.set_timeout(args.timeout);
     let rsp = d
         .read_address()
         .with_context(|| "Cannot read RS485 address")?;
@@ -345,7 +345,7 @@ fn confirm_only_one_module_connected() -> Result<bool> {
 fn main() -> Result<()> {
     let args = CliArgs::parse();
 
-    let mut delay = std::time::Duration::from_millis(args.delay);
+    let mut delay = args.delay;
 
     let _log_handle = logging_init(args.verbose.log_level_filter());
 
@@ -437,7 +437,7 @@ fn main() -> Result<()> {
         }
         CliConnection::RtuScan { .. } => unreachable!(),
     };
-    d.set_timeout(Duration::from_millis(args.timeout as u64));
+    d.set_timeout(args.timeout);
 
     match command {
         CliCommands::Read => {

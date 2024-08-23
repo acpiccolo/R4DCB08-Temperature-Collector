@@ -261,7 +261,7 @@ struct CliArgs {
     #[command(subcommand)]
     pub connection: CliConnection,
 
-    /// Serial Input/Output operations timeout
+    /// Modbus Input/Output operations timeout
     #[arg(value_parser = humantime::parse_duration, long, default_value = "200ms")]
     timeout: Duration,
 

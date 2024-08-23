@@ -46,7 +46,7 @@ tempcol tcp 192.168.0.222:502 read
 ```
 You can even use this tool as a daemon for a MQTT broker:
 ```
-tempcol rtu --address 1 --baudrate 9600 deamon mqtt -username my_name --password my_secret mqtt://localhost:1883
+tempcol rtu --address 1 --baudrate 9600 deamon mqtt --username my_name --password my_secret mqtt://localhost:1883
 ```
 
 ### Cargo Features

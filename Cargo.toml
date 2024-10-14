@@ -35,7 +35,7 @@ tokio-tcp = ["tokio/net", "tokio-modbus/tcp"]
 
 [dependencies]
 thiserror = "1"
-tokio-modbus = { version = "0.14", default-features = false, optional = true }
+tokio-modbus = { version = "0.15", default-features = false, optional = true }
 tokio-serial = { version = "5", optional = true }
 tokio = { version = "1", default-features = false, optional = true }
 # Requirements for bin

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use clap_verbosity_flag::{InfoLevel, Verbosity};
 use dialoguer::Confirm;
@@ -6,7 +6,7 @@ use flexi_logger::{Logger, LoggerHandle};
 use log::*;
 use paho_mqtt as mqtt;
 use r4dcb08_lib::{protocol as proto, tokio_sync_client::R4DCB08};
-use std::io::{stdout, Write};
+use std::io::{Write, stdout};
 use std::{fmt, ops::Deref, panic, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -453,9 +453,7 @@ fn main() -> Result<()> {
             };
             trace!(
                 "Open RTU {} address {:#04x} baud rate {}",
-                device,
-                address,
-                baud_rate
+                device, address, baud_rate
             );
             delay = check_rtu_delay(delay, baud_rate);
             (
@@ -575,12 +573,15 @@ fn main() -> Result<()> {
                 .with_context(|| "Cannot set automatic report")?;
         }
         CliCommands::FactoryReset => {
-            println!("\
+            println!(
+                "\
                 Reset to factory settings:\n\
                 address={:#04x} | baud rate={} | temperature correction all channels=0.0 | automatic report=0 (disabled)\n\
                 \n\
                 After this operation, the device will no longer be responsive!\n\
-                You must power off and on again to complete the reset.", proto::FACTORY_DEFAULT_ADDRESS, BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE)
+                You must power off and on again to complete the reset.",
+                proto::FACTORY_DEFAULT_ADDRESS,
+                BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE)
             );
             let confirmation = Confirm::new()
                 .with_prompt("Do you want to continue?")

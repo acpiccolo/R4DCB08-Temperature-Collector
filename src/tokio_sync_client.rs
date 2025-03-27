@@ -58,7 +58,7 @@ impl R4DCB08 {
     /// and if it is a negative number, the value is subtracted.
     /// Setting it to 0.0 disables this feature.
     ///
-    /// * 'channel' - Temperature sensore channel 0 to 7.
+    /// * 'channel' - Temperature sensor channel 0 to 7.
     /// * 'correction' - Correction value in °Celsius
     pub fn set_temperature_correction(&mut self, channel: u8, correction: f32) -> Result<()> {
         proto::write_temperature_correction_check_channel(channel)?;

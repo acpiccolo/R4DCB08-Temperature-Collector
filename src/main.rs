@@ -121,17 +121,17 @@ fn parse_degree_celsius(s: &str) -> Result<f32, String> {
 
 #[derive(Subcommand, Debug, Clone, PartialEq)]
 enum CliConnection {
-    /// Use Modbus/TCP connection
+    /// Connect to a temperature collector via Modbus/TCP
     Tcp {
-        // TCP address (e.g. 192.168.0.222:502)
+        // The IP address or hostname with port of the Modbus TCP device (e.g. 192.168.0.222:502)
         address: String,
 
         #[command(subcommand)]
         command: CliCommands,
     },
-    /// Use Modbus/RTU connection
+    /// Connect to a temperature collector via Modbus/RTU
     Rtu {
-        /// Device
+        /// Specify the serial device
         #[arg(short, long, default_value_t = default_device_name())]
         device: String,
 
@@ -139,27 +139,26 @@ enum CliConnection {
         #[arg(long, default_value_t = BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE), value_parser = parse_baud_rate)]
         baud_rate: BaudRate,
 
-        /// RS485 address from 1 to 247
+        /// The RS485 address from 1 to 247
         #[arg(short, long, default_value_t = proto::FACTORY_DEFAULT_ADDRESS, value_parser = parse_address)]
         address: u8,
 
         #[command(subcommand)]
         command: CliCommands,
     },
-    /// Scan for a R4DCB08 temperature collector on any supported baud rate and query the Modbus RS485 address.
+    /// Scan for R4DCB08 devices on all supported baud rates and detect Modbus RS485 addresses
     RtuScan {
-        /// Device
+        /// Specify the serial device
         #[arg(short, long, default_value_t = default_device_name())]
         device: String,
     },
 }
 
-#[derive(Subcommand, Debug, Clone, PartialEq, Default)]
+#[derive(Subcommand, Debug, Clone, PartialEq)]
 enum DaemonMode {
-    #[default]
-    /// Print values to stdout [default]
+    /// Print temperature values to the console
     Stdout,
-    /// Send values to a MQTT Broker
+    /// Send temperature values to an MQTT broker
     Mqtt {
         /// URL to the MQTT broker like: mqtt://localhost:1883
         url: String,
@@ -184,71 +183,78 @@ enum DaemonMode {
 
 #[derive(Subcommand, Debug, Clone, PartialEq)]
 enum CliCommands {
-    /// Daemon mode to read the current temperature from all channels
+    /// Run continuously to read temperatures from all sensor channels (optional MQTT integration)
     Daemon {
-        /// Interval for repeated polling of the values
+        /// The polling interval for reading values
         #[arg(value_parser = humantime::parse_duration, short, long, default_value = "2sec")]
-        poll_iterval: Duration,
+        poll_interval: Duration,
 
         #[command(subcommand)]
         mode: DaemonMode,
     },
 
-    /// Read the current temperature from all channels
+    /// Read the current temperature from all sensor channels
     Read,
 
-    /// Read the current temperature correction values form all channels
+    /// Read the current temperature correction values form all sensor channels
     ReadCorrection,
 
-    /// Read the current baud rate
+    /// Read the current communication baud rate
     ReadBaudRate,
 
     /// Read temperature automatic reporting
     ReadAutomaticReport,
 
-    /// Read all values
+    /// Read all available device values
     ReadAll,
 
-    /// Queries the current RS485 address, this message is broadcasted.
-    /// Only one temperature module can be connected to the RS485 bus, more than one will be wrong!
+    /// Query the current RS485 address (broadcast mode - make sure there is only one device connected to the RS485 bus)
     QueryAddress,
 
-    /// Set the temperature correction per channel
+    /// Set a temperature correction offset to a specific sensor channel.
+    /// Useful for calibrating sensors to compensate for inaccuracies.
+    #[clap(verbatim_doc_comment)]
     SetCorrection {
-        /// Temperature sensore channel 0 to 7
+        /// Target temperature sensor channel 0 to 7
         #[arg(value_parser = parse_channel)]
         channel: u8,
-        /// Correction value in °Celsius
+        /// Correction value in °C, positive or negative, in 0.1°C increments
         #[arg(value_parser = parse_degree_celsius)]
         value: f32,
     },
 
-    /// Set the baud rate. After the command you need to power up the module again!
+    /// Set the baud rate.
+    /// To take effect, you must turn the power off and on again.
+    /// All devices on a bus must use the same baud rate.
+    #[clap(verbatim_doc_comment)]
     SetBaudRate {
         /// The new baud rate any value of 1200, 2400, 4800, 9600, 19200
         #[arg(value_parser = parse_baud_rate)]
         new_baud_rate: BaudRate,
     },
 
-    /// Set the RS485 address
+    /// Set a new RS485 address for the device.
+    /// The new address must be unique on the RS485 bus to avoid conflicts.
+    #[clap(verbatim_doc_comment)]
     SetAddress {
-        /// The RS485 address can be from 1 to 247
+        /// The new RS485 address can be from 1 to 247
         #[arg(value_parser = parse_address)]
         address: u8,
     },
 
-    /// Set temperature automatic reporting
+    /// Enable or configure automatic temperature reporting
     SetAutomaticReport {
         /// Report time in seconds. 0 = disabled (default) or from 1 to 255 seconds.
         report_time: u8,
     },
 
-    /// Reset the device to the factory default settings
+    /// Restore the device to factory default settings
     FactoryReset,
 }
 
 const fn about_text() -> &'static str {
-    "R4DCB08 temperature collector/monitor for the command line"
+    "tempcol - R4DCB08 Temperature Collector CLI\n\
+    A command-line tool for reading and managing R4DCB08 temperature collectors via Modbus RTU/TCP."
 }
 
 #[derive(Parser, Debug)]
@@ -261,14 +267,14 @@ struct CliArgs {
     #[command(subcommand)]
     pub connection: CliConnection,
 
-    /// Modbus Input/Output operations timeout
+    /// Modbus I/O timeout
     #[arg(value_parser = humantime::parse_duration, long, default_value = "200ms")]
     timeout: Duration,
 
     // According to MODBUS specification:
     // Wait at least 3.5 char between frames
     // However, some USB - RS485 dongles requires at least 10ms to switch between TX and RX, so use a save delay between frames
-    /// Delay between multiple modbus commands
+    /// Delay between multiple Modbus commands
     #[arg(value_parser = humantime::parse_duration, long, default_value = "50ms")]
     delay: Duration,
 }
@@ -477,7 +483,10 @@ fn main() -> Result<()> {
     d.set_timeout(args.timeout);
 
     match command {
-        CliCommands::Daemon { poll_iterval, mode } => match mode {
+        CliCommands::Daemon {
+            poll_interval: poll_iterval,
+            mode,
+        } => match mode {
             DaemonMode::Stdout => loop {
                 print_temperature!(&mut d);
                 std::thread::sleep(delay.max(*poll_iterval));
@@ -560,7 +569,7 @@ fn main() -> Result<()> {
         CliCommands::SetBaudRate { new_baud_rate } => {
             d.set_baud_rate(**new_baud_rate)
                 .with_context(|| "Cannot set baud rate")?;
-            println!("The baud rate will be updated when the module is powered up again!");
+            println!("For the change to take effect, you must turn the power off and on again!");
         }
         CliCommands::SetAddress { address } => {
             d.set_address(*address)
@@ -576,10 +585,10 @@ fn main() -> Result<()> {
             println!(
                 "\
                 Reset to factory settings:\n\
-                address={:#04x} | baud rate={} | temperature correction all channels=0.0 | automatic report=0 (disabled)\n\
+                address={:#04x} | baud rate={} | temperature correction all sensor channels=0.0 | automatic report=0 (disabled)\n\
                 \n\
                 After this operation, the device will no longer be responsive!\n\
-                You must power off and on again to complete the reset.",
+                To complete the reset, you must turn the power off and on again.",
                 proto::FACTORY_DEFAULT_ADDRESS,
                 BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE)
             );

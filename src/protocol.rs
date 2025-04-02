@@ -1,224 +1,527 @@
-use crate::Error;
 use std::time::Duration;
+use thiserror::Error;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u8)]
+/// Number of channels available in the R4DCB08 temperature module.
+pub const NUMBER_OF_CHANNELS: usize = 8;
+
+/// 16-bit value stored in Modbus register using a big-endian representation
+pub type Word = u16;
+
+/// Enum representing the baud rates for communication
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BaudRate {
-    B1200 = 0,
-    B2400 = 1,
-    B4800 = 2,
-    B9600 = 3,
-    B19200 = 4,
+    B1200,
+    B2400,
+    B4800,
+    /// Factory default baud rate for the R4DCB08 temperature module
+    #[default]
+    B9600,
+    B19200,
 }
 
 impl BaudRate {
-    pub fn decode(value: u16) -> Self {
-        match value {
-            0 => BaudRate::B1200,
-            1 => BaudRate::B2400,
-            2 => BaudRate::B4800,
-            3 => BaudRate::B9600,
-            4 => BaudRate::B19200,
+    /// Register address for reading and writing the baud rate
+    pub const ADDRESS: u16 = 0x00FF;
+    /// Number of registers to read for the baud rate
+    pub const QUANTITY: u16 = 1;
+
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The `u16` protocol value to decode.
+    pub fn decode_from_holding_registers(value: &[Word]) -> Self {
+        match value.first().unwrap() {
+            0 => Self::B1200,
+            1 => Self::B2400,
+            2 => Self::B4800,
+            3 => Self::B9600,
+            4 => Self::B19200,
             5 => unreachable!("Factory reset"),
             _ => unreachable!(),
         }
     }
 
-    pub fn encode(&self) -> u16 {
-        *self as u16
-    }
-}
-
-pub const NUMBER_OF_CHANNELS: u8 = 8;
-pub const FACTORY_DEFAULT_BAUD_RATE: &BaudRate = &BaudRate::B9600;
-pub const FACTORY_DEFAULT_ADDRESS: u8 = 0x01;
-pub const READ_ADDRESS_BROADCAST_ADDRESS: u8 = 0xFF;
-
-pub const READ_TEMPERATURE_REG_ADDR: u16 = 0x0000;
-pub const READ_TEMPERATURE_REG_QUAN: u16 = NUMBER_OF_CHANNELS as u16;
-
-pub const READ_TEMPERATURE_CORRECTION_REG_ADDR: u16 = 0x0008;
-pub const READ_TEMPERATURE_CORRECTION_REG_QUAN: u16 = NUMBER_OF_CHANNELS as u16;
-pub const WRITE_TEMPERATURE_CORRECTION_REG_ADDR: u16 = 0x0008;
-
-pub const READ_AUTOMATIC_REPORT_REG_ADDR: u16 = 0x00FD;
-pub const READ_AUTOMATIC_REPORT_REG_QUAN: u16 = 1;
-pub const WRITE_AUTOMATIC_REPORT_REG_ADDR: u16 = 0x00FD;
-
-pub const READ_BAUD_RATE_REG_ADDR: u16 = 0x00FF;
-pub const READ_BAUD_RATE_REG_QUAN: u16 = 1;
-pub const WRITE_BAUD_RATE_REG_ADDR: u16 = 0x00FF;
-
-pub const WRITE_FACTORY_RESET_REG_ADDR: u16 = 0x00FF;
-pub const WRITE_FACTORY_RESET_REG_DATA: u16 = 5;
-
-pub const READ_ADDRESS_REG_ADDR: u16 = 0x00FE;
-pub const READ_ADDRESS_REG_QUAN: u16 = 1;
-pub const WRITE_ADDRESS_REG_ADDR: u16 = 0x00FE;
-
-pub fn degree_celsius_decode(value: u16) -> f32 {
-    match value.cmp(&0x8000) {
-        std::cmp::Ordering::Greater => {
-            // The highest bit 1 indicates a negative value，
-            // this value directly subtracting 65536 and divided by 10,
-            // is the current temperature value.
-            ((value as f32) - 65536.0) / 10.0
-        }
-        std::cmp::Ordering::Less => {
-            // The highest bit is 0, so the temperature is positive,
-            // it is converted to decimal and divided by 10
-            value as f32 / 10.0
-        }
-        std::cmp::Ordering::Equal => {
-            // When the data is 0X8000(32768), it indicates no sensor or error
-            f32::NAN
+    /// Encodes a `BaudRate` into a `u16` protocol value.
+    pub fn encode_for_write_register(&self) -> Word {
+        match self {
+            Self::B1200 => 0u16,
+            Self::B2400 => 1,
+            Self::B4800 => 2,
+            Self::B9600 => 3,
+            Self::B19200 => 4,
         }
     }
 }
 
-pub const DEGREE_CELSIUS_MIN: f32 = -3276.7;
-pub const DEGREE_CELSIUS_MAX: f32 = 3276.7;
-pub fn degree_celsius_encode(value: f32) -> std::result::Result<u16, Error> {
-    if !(DEGREE_CELSIUS_MIN..=DEGREE_CELSIUS_MAX).contains(&value) {
-        Err(Error::DegreeCelsiusOutOfRange(value))
-    } else if value >= 0.0 {
-        Ok((value * 10.0) as u16)
-    } else {
-        Ok((65536.0 + value * 10.0) as u16)
+#[derive(Error, Debug)]
+#[error("Baud rate must by any value of 1200, 2400, 4800, 9600, 19200.")]
+pub struct ErrorInvalidBaudRate;
+impl TryFrom<u16> for BaudRate {
+    type Error = ErrorInvalidBaudRate;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            1200 => Ok(BaudRate::B1200),
+            2400 => Ok(BaudRate::B2400),
+            4800 => Ok(BaudRate::B4800),
+            9600 => Ok(BaudRate::B9600),
+            19200 => Ok(BaudRate::B19200),
+            _ => Err(ErrorInvalidBaudRate),
+        }
+    }
+}
+impl From<&BaudRate> for u16 {
+    fn from(baud_rate: &BaudRate) -> u16 {
+        match baud_rate {
+            BaudRate::B1200 => 1200,
+            BaudRate::B2400 => 2400,
+            BaudRate::B4800 => 4800,
+            BaudRate::B9600 => 9600,
+            BaudRate::B19200 => 19200,
+        }
+    }
+}
+impl std::fmt::Display for BaudRate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", u16::from(self))
     }
 }
 
-pub const CHANNELS_MIN: u8 = 0;
-pub const CHANNELS_MAX: u8 = NUMBER_OF_CHANNELS - 1;
-pub fn write_temperature_correction_check_channel(channel: u8) -> std::result::Result<(), Error> {
-    if (CHANNELS_MIN..=CHANNELS_MAX).contains(&channel) {
-        Ok(())
-    } else {
-        Err(Error::ChannelOutOfRange(channel))
+/// Address of the Modbus RTU protocol for the RS485 serial port.
+/// The address must be in the range from 1 to 247.
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Address(u8);
+impl std::ops::Deref for Address {
+    type Target = u8;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl Default for Address {
+    /// Factory default address for the R4DCB08 temperature module.
+    fn default() -> Self {
+        Self(0x01)
+    }
+}
+impl Address {
+    /// Register address for reading and writing the address
+    pub const ADDRESS: u16 = 0x00FE;
+    /// Number of registers to read the address
+    pub const QUANTITY: u16 = 2;
+    /// Minimum permissible address value.
+    pub const MIN: u8 = 1;
+    /// Maximum permissible address value.
+    pub const MAX: u8 = 247;
+    /// Broadcast address for reading the Modbus address.
+    pub const BROADCAST: Address = Address(0xFF);
+
+    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
+        Self(*words.first().unwrap() as u8)
+    }
+
+    pub fn encode_for_write_register(&self) -> Word {
+        self.0 as u16
+    }
+}
+/// Error indicating that the address value is outside the permissible range.
+///
+/// # Arguments
+///
+/// * `0` - The address value that caused the error.
+#[derive(Error, Debug)]
+#[error(
+        "The address value {0} is outside the permissible range of {min} to {max}",
+        min = Address::MIN,
+        max = Address::MAX
+    )]
+pub struct ErrorAddressOutOfRange(u8);
+impl TryFrom<u8> for Address {
+    type Error = ErrorAddressOutOfRange;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if (Self::MIN..=Self::MAX).contains(&value) {
+            Ok(Self(value))
+        } else {
+            Err(ErrorAddressOutOfRange(value))
+        }
+    }
+}
+impl std::fmt::Display for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:#04x}", self.0)
     }
 }
 
-pub const DURATION_MIN: u8 = 0;
-pub const DURATION_MAX: u8 = 255;
-pub fn read_automatic_report_decode_duration(value: u16) -> Duration {
-    Duration::from_secs(value as u64)
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Temperature(f32);
+impl Temperature {
+    pub const NAN: Temperature = Self(f32::NAN);
+    /// Minimum permissible temperature value in degrees Celsius.
+    pub const MIN: f32 = -3276.7;
+    /// Maximum permissible temperature value in degrees Celsius.
+    pub const MAX: f32 = 3276.7;
+
+    /// Decodes a `u16` protocol value into a temperature.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The `u16` protocol value to decode.
+    ///
+    /// # Returns
+    ///
+    /// A `Temperature` representing the temperature.
+    pub fn decode_from_holding_registers(word: Word) -> Self {
+        Self(match word.cmp(&0x8000) {
+            std::cmp::Ordering::Greater => {
+                // The highest bit 1 indicates a negative value，
+                // this value directly subtracting 65536 and divided by 10,
+                // is the current temperature value.
+                ((word as f32) - 65536.0) / 10.0
+            }
+            std::cmp::Ordering::Less => {
+                // The highest bit is 0, so the temperature is positive,
+                // it is converted to decimal and divided by 10
+                word as f32 / 10.0
+            }
+            std::cmp::Ordering::Equal => {
+                // When the data is 0X8000(32768), it indicates no sensor or error
+                f32::NAN
+            }
+        })
+    }
+
+    /// Encodes a temperature  into a `u16` protocol value.
+    ///
+    /// # Returns
+    ///
+    /// A `Word` containing the encoded value.
+    pub fn encode_for_write_register(&self) -> Word {
+        if self.0 >= 0.0 {
+            (self.0 * 10.0) as u16
+        } else {
+            (65536.0 + self.0 * 10.0) as u16
+        }
+    }
 }
-pub fn write_automatic_report_encode_duration(value: Duration) -> Result<u16, Error> {
-    if (DURATION_MIN as u64..=DURATION_MAX as u64).contains(&value.as_secs()) {
-        Ok(value.as_secs().try_into().unwrap())
-    } else {
-        Err(Error::DurationOutOfRange(value.as_secs() as u8))
+impl std::ops::Deref for Temperature {
+    type Target = f32;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+/// Error indicating that the degree Celsius value is outside the permissible range.
+///
+/// # Arguments
+///
+/// * `0` - The degree Celsius value that caused the error.
+#[derive(Error, Debug)]
+#[error(
+    "The degree celsius value {0} is outside the permissible range of {min} to {max}",
+    min = Temperature::MIN,
+    max = Temperature::MAX
+)]
+pub struct ErrorDegreeCelsiusOutOfRange(f32);
+impl TryFrom<f32> for Temperature {
+    type Error = ErrorDegreeCelsiusOutOfRange;
+
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        if !(Self::MIN..=Self::MAX).contains(&value) {
+            Err(ErrorDegreeCelsiusOutOfRange(value))
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+impl std::fmt::Display for Temperature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:.1}", self.0)
     }
 }
 
-pub const ADDRESS_MIN: u8 = 1;
-pub const ADDRESS_MAX: u8 = 247;
-pub fn write_address_encode_address(address: u8) -> std::result::Result<u16, Error> {
-    if (ADDRESS_MIN..=ADDRESS_MAX).contains(&address) {
-        Ok(address as u16)
-    } else {
-        Err(Error::AddressOutOfRange(address))
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Temperatures([Temperature; NUMBER_OF_CHANNELS]);
+impl Temperatures {
+    /// Register address for reading temperatures.
+    pub const ADDRESS: u16 = 0x0000;
+    /// Number of registers to read for temperatures.
+    pub const QUANTITY: u16 = NUMBER_OF_CHANNELS as u16;
+
+    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
+        let mut temperatures = [Temperature::NAN; NUMBER_OF_CHANNELS];
+        for (i, word) in words.iter().enumerate() {
+            temperatures[i] = Temperature::decode_from_holding_registers(*word);
+        }
+        Self(temperatures)
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Temperature> {
+        self.0.iter()
+    }
+}
+impl std::fmt::Display for Temperatures {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Channel(u8);
+impl Channel {
+    /// Minimum permissible channel value.
+    pub const MIN: usize = 0;
+    /// Maximum permissible channel value.
+    pub const MAX: usize = NUMBER_OF_CHANNELS - 1;
+}
+impl std::ops::Deref for Channel {
+    type Target = u8;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+/// Error indicating that the channel value is outside the permissible range.
+///
+/// # Arguments
+///
+/// * `0` - The channel value that caused the error.
+#[derive(Error, Debug)]
+#[error(
+        "The channel value {0} is outside the permissible range of {min} to {max}",
+        min = Channel::MIN,
+        max = Channel::MAX
+    )]
+pub struct ErrorChannelOutOfRange(u8);
+impl TryFrom<u8> for Channel {
+    type Error = ErrorChannelOutOfRange;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if !(Self::MIN..=Self::MAX).contains(&(value as usize)) {
+            Err(ErrorChannelOutOfRange(value))
+        } else {
+            Ok(Self(value))
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TemperatureCorrection([Temperature; NUMBER_OF_CHANNELS]);
+impl TemperatureCorrection {
+    /// Register address for reading and writing temperature correction values.
+    pub const ADDRESS: u16 = 0x0008;
+    /// Number of registers to read for temperature correction values.
+    pub const QUANTITY: u16 = NUMBER_OF_CHANNELS as u16;
+
+    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
+        let mut temperatures = [Temperature::NAN; NUMBER_OF_CHANNELS];
+        for (i, word) in words.iter().enumerate() {
+            temperatures[i] = Temperature::decode_from_holding_registers(*word);
+        }
+        Self(temperatures)
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Temperature> {
+        self.0.iter()
+    }
+
+    pub fn encode_for_write_register(correction_value: Temperature) -> Word {
+        correction_value.encode_for_write_register()
+    }
+
+    pub fn channel_address(channel: Channel) -> u16 {
+        Self::ADDRESS + *channel as u16
+    }
+}
+impl std::fmt::Display for TemperatureCorrection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(|t| t.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct AutomaticReport(u8);
+impl AutomaticReport {
+    /// Register address for reading and writing the automatic report interval.
+    pub const ADDRESS: u16 = 0x00FD;
+    /// Number of registers to read for the automatic report interval.
+    pub const QUANTITY: u16 = 1;
+    /// Minimum permissible duration in seconds value for automatic reporting.
+    pub const DURATION_MIN: u8 = 0;
+    /// Maximum permissible duration in seconds value for automatic reporting.
+    pub const DURATION_MAX: u8 = 255;
+
+    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
+        Self(*words.first().unwrap() as u8)
+    }
+
+    pub fn encode_for_write_register(&self) -> Word {
+        u16::from(self.0)
+    }
+}
+impl std::ops::Deref for AutomaticReport {
+    type Target = u8;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl From<u8> for AutomaticReport {
+    fn from(interval: u8) -> AutomaticReport {
+        Self(interval)
+    }
+}
+/// Error indicating that the duration value is outside the permissible range.
+///
+/// # Arguments
+///
+/// * `0` - The duration value that caused the error.
+#[derive(Error, Debug)]
+#[error(
+        "The duration value {0} is outside the permissible range of {min} to {max}",
+        min = AutomaticReport::DURATION_MIN,
+        max = AutomaticReport::DURATION_MAX
+    )]
+pub struct ErrorDurationOutOfRange(u64);
+impl TryFrom<Duration> for AutomaticReport {
+    type Error = ErrorDurationOutOfRange;
+
+    fn try_from(value: Duration) -> Result<Self, Self::Error> {
+        let secs = value.as_secs();
+        if (Self::DURATION_MIN as u64..=Self::DURATION_MAX as u64).contains(&secs) {
+            Ok(Self(secs as u8))
+        } else {
+            Err(ErrorDurationOutOfRange(secs))
+        }
+    }
+}
+
+pub struct FactoryReset;
+impl FactoryReset {
+    /// Register address for performing a factory reset.
+    pub const ADDRESS: u16 = 0x00FF;
+    /// Data value for performing a factory reset.
+    const DATA: u16 = 5;
+
+    pub fn encode_for_write_register() -> Word {
+        Self::DATA
     }
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]
-    fn degree_celsius() {
-        assert_eq!(degree_celsius_decode(219), 21.9);
-        assert!(matches!(degree_celsius_encode(21.9), Ok(219)));
+    fn degree_celsius_test() {
+        assert_eq!(*Temperature::decode_from_holding_registers(219), 21.9);
+        assert!(matches!(
+            Temperature::try_from(21.9)
+                .unwrap()
+                .encode_for_write_register(),
+            219
+        ));
 
-        assert_eq!(degree_celsius_decode(65424), -11.2);
-        assert!(matches!(degree_celsius_encode(-11.2), Ok(65424)));
+        assert_eq!(*Temperature::decode_from_holding_registers(65424), -11.2);
+        assert!(matches!(
+            Temperature::try_from(-11.2)
+                .unwrap()
+                .encode_for_write_register(),
+            65424
+        ));
 
-        assert_eq!(degree_celsius_decode(100), 10.0);
-        assert!(matches!(degree_celsius_encode(10.0), Ok(100)));
+        assert_eq!(*Temperature::decode_from_holding_registers(100), 10.0);
+        assert!(matches!(
+            Temperature::try_from(10.0)
+                .unwrap()
+                .encode_for_write_register(),
+            100
+        ));
 
-        assert_eq!(degree_celsius_decode(65506), -3.0);
-        assert!(matches!(degree_celsius_encode(-3.0), Ok(65506)));
+        assert_eq!(*Temperature::decode_from_holding_registers(65506), -3.0);
+        assert!(matches!(
+            Temperature::try_from(-3.0)
+                .unwrap()
+                .encode_for_write_register(),
+            65506
+        ));
 
         // maximum
-        assert_eq!(degree_celsius_decode(32767), 3276.7);
-        assert!(matches!(degree_celsius_encode(3276.7), Ok(32767)));
+        assert_eq!(
+            *Temperature::decode_from_holding_registers(32767),
+            Temperature::MAX
+        );
         assert!(matches!(
-            degree_celsius_encode(3276.8),
-            Err(Error::DegreeCelsiusOutOfRange(..))
+            Temperature::try_from(Temperature::MAX)
+                .unwrap()
+                .encode_for_write_register(),
+            32767
+        ));
+        assert!(matches!(
+            Temperature::try_from(Temperature::MAX + 0.1),
+            Err(ErrorDegreeCelsiusOutOfRange(..))
         ));
 
         // minimum
-        assert_eq!(degree_celsius_decode(32769), -3276.7);
-        assert!(matches!(degree_celsius_encode(-3276.7), Ok(32769)));
-        assert!(matches!(
-            degree_celsius_encode(-3276.8),
-            Err(Error::DegreeCelsiusOutOfRange(..))
-        ));
-
-        assert!(degree_celsius_decode(32768).is_nan());
-    }
-
-    #[test]
-    fn write_address_encode_address_test() {
-        assert!(matches!(
-            write_address_encode_address(0),
-            Err(Error::AddressOutOfRange(..))
-        ));
-        assert!(matches!(write_address_encode_address(1), Ok(1)));
-        assert!(matches!(write_address_encode_address(247), Ok(247)));
-        assert!(matches!(
-            write_address_encode_address(248),
-            Err(Error::AddressOutOfRange(..))
-        ));
-    }
-
-    #[test]
-    fn write_temperature_correction_check_channel_test() {
-        assert!(matches!(
-            write_temperature_correction_check_channel(0),
-            Ok(())
-        ));
-        assert!(matches!(
-            write_temperature_correction_check_channel(7),
-            Ok(())
-        ));
-        assert!(matches!(
-            write_temperature_correction_check_channel(8),
-            Err(Error::ChannelOutOfRange(..))
-        ));
-    }
-
-    #[test]
-    fn write_automatic_report_encode_duration_test() {
-        assert_eq!(read_automatic_report_decode_duration(0), Duration::ZERO);
         assert_eq!(
-            read_automatic_report_decode_duration(1),
-            Duration::from_secs(1)
+            *Temperature::decode_from_holding_registers(32769),
+            Temperature::MIN
         );
-        assert_eq!(
-            read_automatic_report_decode_duration(255),
-            Duration::from_secs(255)
-        );
+        assert!(matches!(
+            Temperature::try_from(Temperature::MIN)
+                .unwrap()
+                .encode_for_write_register(),
+            32769
+        ));
+        assert!(matches!(
+            Temperature::try_from(Temperature::MIN + -0.1),
+            Err(ErrorDegreeCelsiusOutOfRange(..))
+        ));
 
+        assert!(Temperature::decode_from_holding_registers(32768).is_nan());
+    }
+
+    #[test]
+    fn address_test() {
         assert!(matches!(
-            write_automatic_report_encode_duration(Duration::ZERO),
-            Ok(0)
+            Address::try_from(Address::MIN - 1),
+            Err(ErrorAddressOutOfRange(..))
         ));
+        assert!(matches!(Address::try_from(1), Ok(..)));
+        assert!(matches!(Address::try_from(247), Ok(..)));
         assert!(matches!(
-            write_automatic_report_encode_duration(Duration::from_millis(1234)),
-            Ok(1)
+            Address::try_from(Address::MAX + 1),
+            Err(ErrorAddressOutOfRange(..))
         ));
+    }
+
+    #[test]
+    fn temperature_correction_check_channel_test() {
+        assert!(matches!(Channel::try_from(Channel::MIN as u8), Ok(..)));
+        assert!(matches!(Channel::try_from(Channel::MAX as u8), Ok(..)));
         assert!(matches!(
-            write_automatic_report_encode_duration(Duration::from_millis(1999)),
-            Ok(1)
-        ));
-        assert!(matches!(
-            write_automatic_report_encode_duration(Duration::from_secs(255)),
-            Ok(255)
-        ));
-        assert!(matches!(
-            write_automatic_report_encode_duration(Duration::from_secs(256)),
-            Err(Error::DurationOutOfRange(..))
+            Channel::try_from(Channel::MAX as u8 + 1),
+            Err(ErrorChannelOutOfRange(..))
         ));
     }
 }

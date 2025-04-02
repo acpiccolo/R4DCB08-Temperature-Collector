@@ -1,5 +1,4 @@
 use crate::protocol as proto;
-use std::time::Duration;
 use tokio_modbus::prelude::{Reader, Writer};
 
 type Result<T> = std::result::Result<T, crate::tokio_error::Error>;
@@ -14,37 +13,30 @@ impl R4DCB08 {
         Self { ctx }
     }
 
-    /// Read the current temperature from all channels in °C.
+    /// Read the current temperatures from all channels in °C.
     /// If a channel is not connected or an error is occurred, NaN is returned.
     ///
-    /// The returned temperature is corrected by the temperature correction
-    pub async fn read_temperature(&mut self) -> Result<Vec<f32>> {
+    /// The returned temperatures is corrected by the temperature correction
+    pub async fn read_temperatures(&mut self) -> Result<proto::Temperatures> {
         let rsp = self
             .ctx
-            .read_holding_registers(
-                proto::READ_TEMPERATURE_REG_ADDR,
-                proto::READ_TEMPERATURE_REG_QUAN,
-            )
+            .read_holding_registers(proto::Temperatures::ADDRESS, proto::Temperatures::QUANTITY)
             .await??;
-        Ok(rsp
-            .iter()
-            .map(|value| proto::degree_celsius_decode(*value))
-            .collect::<Vec<_>>())
+        Ok(proto::Temperatures::decode_from_holding_registers(&rsp))
     }
 
     /// Read the current temperature correction values form all channels in °C.
-    pub async fn read_temperature_correction(&mut self) -> Result<Vec<f32>> {
+    pub async fn read_temperature_correction(&mut self) -> Result<proto::TemperatureCorrection> {
         let rsp = self
             .ctx
             .read_holding_registers(
-                proto::READ_TEMPERATURE_CORRECTION_REG_ADDR,
-                proto::READ_TEMPERATURE_CORRECTION_REG_QUAN,
+                proto::TemperatureCorrection::ADDRESS,
+                proto::TemperatureCorrection::QUANTITY,
             )
             .await??;
-        Ok(rsp
-            .iter()
-            .map(|value| proto::degree_celsius_decode(*value))
-            .collect::<Vec<_>>())
+        Ok(proto::TemperatureCorrection::decode_from_holding_registers(
+            &rsp,
+        ))
     }
 
     /// Set the temperature correction value per channel.
@@ -57,29 +49,30 @@ impl R4DCB08 {
     ///
     /// * 'channel' - Temperature sensor channel 0 to 7.
     /// * 'correction' - Correction value in °Celsius
-    pub async fn set_temperature_correction(&mut self, channel: u8, correction: f32) -> Result<()> {
-        proto::write_temperature_correction_check_channel(channel)?;
+    pub async fn set_temperature_correction(
+        &mut self,
+        channel: proto::Channel,
+        correction: proto::Temperature,
+    ) -> Result<()> {
         Ok(self
             .ctx
             .write_single_register(
-                proto::WRITE_TEMPERATURE_CORRECTION_REG_ADDR + channel as u16,
-                proto::degree_celsius_encode(correction)?,
+                proto::TemperatureCorrection::channel_address(channel),
+                proto::TemperatureCorrection::encode_for_write_register(correction),
             )
             .await??)
     }
 
     /// Read temperature automatic reporting
-    pub async fn read_automatic_report(&mut self) -> Result<Duration> {
+    pub async fn read_automatic_report(&mut self) -> Result<proto::AutomaticReport> {
         let rsp = self
             .ctx
             .read_holding_registers(
-                proto::READ_AUTOMATIC_REPORT_REG_ADDR,
-                proto::READ_AUTOMATIC_REPORT_REG_QUAN,
+                proto::AutomaticReport::ADDRESS,
+                proto::AutomaticReport::QUANTITY,
             )
             .await??;
-        Ok(proto::read_automatic_report_decode_duration(
-            *rsp.first().expect("Result on success expected"),
-        ))
+        Ok(proto::AutomaticReport::decode_from_holding_registers(&rsp))
     }
 
     /// Set temperature automatic reporting
@@ -87,12 +80,12 @@ impl R4DCB08 {
     /// The value is set for all 8 channels at the same time.
     ///
     /// * 'report_in_sec' - Report time in seconds. 0 = disabled (default) or from 1 to 255 seconds.
-    pub async fn set_automatic_report(&mut self, report: Duration) -> Result<()> {
+    pub async fn set_automatic_report(&mut self, report: proto::AutomaticReport) -> Result<()> {
         Ok(self
             .ctx
             .write_single_register(
-                proto::WRITE_AUTOMATIC_REPORT_REG_ADDR,
-                proto::write_automatic_report_encode_duration(report)?,
+                proto::AutomaticReport::ADDRESS,
+                report.encode_for_write_register(),
             )
             .await??)
     }
@@ -101,14 +94,9 @@ impl R4DCB08 {
     pub async fn read_baud_rate(&mut self) -> Result<proto::BaudRate> {
         let rsp = self
             .ctx
-            .read_holding_registers(
-                proto::READ_BAUD_RATE_REG_ADDR,
-                proto::READ_BAUD_RATE_REG_QUAN,
-            )
+            .read_holding_registers(proto::BaudRate::ADDRESS, proto::BaudRate::QUANTITY)
             .await??;
-        Ok(proto::BaudRate::decode(
-            *rsp.first().expect("Result on success expected"),
-        ))
+        Ok(proto::BaudRate::decode_from_holding_registers(&rsp))
     }
 
     /// Set the baud rate.
@@ -117,7 +105,10 @@ impl R4DCB08 {
     pub async fn set_baud_rate(&mut self, baud_rate: proto::BaudRate) -> Result<()> {
         Ok(self
             .ctx
-            .write_single_register(proto::WRITE_BAUD_RATE_REG_ADDR, baud_rate.encode())
+            .write_single_register(
+                proto::BaudRate::ADDRESS,
+                baud_rate.encode_for_write_register(),
+            )
             .await??)
     }
 
@@ -126,8 +117,8 @@ impl R4DCB08 {
         Ok(self
             .ctx
             .write_single_register(
-                proto::WRITE_FACTORY_RESET_REG_ADDR,
-                proto::WRITE_FACTORY_RESET_REG_DATA,
+                proto::FactoryReset::ADDRESS,
+                proto::FactoryReset::encode_for_write_register(),
             )
             .await??)
     }
@@ -137,24 +128,21 @@ impl R4DCB08 {
     /// Note: When using this command, only one temperature module can be connected to the RS485 bus,
     /// more than one will be wrong!
     /// The connected modbus address must be the broadcast address 255.
-    pub async fn read_address(&mut self) -> Result<u8> {
+    pub async fn read_address(&mut self) -> Result<proto::Address> {
         let rsp = self
             .ctx
-            .read_holding_registers(proto::READ_ADDRESS_REG_ADDR, proto::READ_ADDRESS_REG_QUAN)
+            .read_holding_registers(proto::Address::ADDRESS, proto::Address::QUANTITY)
             .await??;
-        Ok(*rsp.first().expect("Result on success expected") as u8)
+        Ok(proto::Address::decode_from_holding_registers(&rsp))
     }
 
     /// Set the Modbus address
     ///
     /// * 'address' - The address can be from 1 to 247.
-    pub async fn set_address(&mut self, address: u8) -> Result<()> {
+    pub async fn set_address(&mut self, address: proto::Address) -> Result<()> {
         Ok(self
             .ctx
-            .write_single_register(
-                proto::WRITE_ADDRESS_REG_ADDR,
-                proto::write_address_encode_address(address)?,
-            )
+            .write_single_register(proto::Address::ADDRESS, address.encode_for_write_register())
             .await??)
     }
 }

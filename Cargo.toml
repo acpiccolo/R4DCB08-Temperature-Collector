@@ -50,3 +50,6 @@ flexi_logger = { version = "0.29", optional = true }
 dialoguer = { version = "0.11", optional = true }
 humantime = { version = "2", optional = true }
 paho-mqtt = { version = "0.13", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }

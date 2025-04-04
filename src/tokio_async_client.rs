@@ -1,22 +1,50 @@
 use crate::protocol as proto;
 use tokio_modbus::prelude::{Reader, Writer};
 
+/// Custom result type for handling errors.
 type Result<T> = std::result::Result<T, crate::tokio_error::Error>;
 
+/// Asynchronous client for interacting with the R4DCB08 temperature module over Modbus.
+///
+/// This struct provides methods to communicate with the module, including reading temperatures,
+/// configuring settings, and modifying operational parameters.
 pub struct R4DCB08 {
     ctx: tokio_modbus::client::Context,
 }
 
 impl R4DCB08 {
-    /// Constructs a new R4DCB08 client
+    /// Creates a new R4DCB08 client with the given Modbus context.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - An asynchronous Modbus client context.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use tokio_modbus::prelude::*;
+    /// use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// let ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// let mut client = R4DCB08::new(ctx);
+    /// let temperatures = client.read_temperatures()?;
+    /// println!("Temperatures in °C: {}", temperatures);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(ctx: tokio_modbus::client::Context) -> Self {
         Self { ctx }
     }
 
-    /// Read the current temperatures from all channels in °C.
-    /// If a channel is not connected or an error is occurred, NaN is returned.
+    /// Reads the current temperatures from all available channels in degrees Celsius (°C).
     ///
-    /// The returned temperatures is corrected by the temperature correction
+    /// If a channel is not connected or an error occurs, NaN is returned for that channel.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<proto::Temperatures>` containing the temperatures for all channels.
     pub async fn read_temperatures(&mut self) -> Result<proto::Temperatures> {
         let rsp = self
             .ctx
@@ -25,7 +53,11 @@ impl R4DCB08 {
         Ok(proto::Temperatures::decode_from_holding_registers(&rsp))
     }
 
-    /// Read the current temperature correction values form all channels in °C.
+    /// Reads the configured temperature correction values for all channels.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<proto::TemperatureCorrection>` containing correction values per channel.
     pub async fn read_temperature_correction(&mut self) -> Result<proto::TemperatureCorrection> {
         let rsp = self
             .ctx
@@ -39,16 +71,35 @@ impl R4DCB08 {
         ))
     }
 
-    /// Set the temperature correction value per channel.
+    /// Sets a temperature correction value for a specific channel.
     ///
-    /// The temperature sensor may have an error with the actual temperature.
-    /// This correction value can correct the error. The unit is 0.1 °C.
-    /// If the correction value is a positive number, the value is added at the current temperature,
-    /// and if it is a negative number, the value is subtracted.
-    /// Setting it to 0.0 disables this feature.
+    /// # Arguments
     ///
-    /// * 'channel' - Temperature sensor channel 0 to 7.
-    /// * 'correction' - Correction value in °Celsius
+    /// * `channel` - The temperature sensor channel.
+    /// * `correction` - The correction value in °C. Positive values are added, negative values are subtracted.
+    ///   A value of 0.0 disables this correction.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<()>` indicating success or failure.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// use r4dcb08_lib::protocol::{Channel, Temperature};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// # let mut client = R4DCB08::new(ctx);
+    /// // Set the temperature correction for temperature sensor channel 3 to 1.3°C.
+    /// let channel = Channel::try_from(3)?;
+    /// let temperature = Temperature::try_from(1.3)?;
+    /// client.set_temperature_correction(channel, temperature)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn set_temperature_correction(
         &mut self,
         channel: proto::Channel,
@@ -63,7 +114,11 @@ impl R4DCB08 {
             .await??)
     }
 
-    /// Read temperature automatic reporting
+    /// Reads the automatic temperature reporting interval.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<proto::AutomaticReport>` indicating the configured reporting interval.
     pub async fn read_automatic_report(&mut self) -> Result<proto::AutomaticReport> {
         let rsp = self
             .ctx
@@ -75,11 +130,11 @@ impl R4DCB08 {
         Ok(proto::AutomaticReport::decode_from_holding_registers(&rsp))
     }
 
-    /// Set temperature automatic reporting
+    /// Sets the automatic temperature reporting interval.
     ///
-    /// The value is set for all 8 channels at the same time.
+    /// # Arguments
     ///
-    /// * 'report_in_sec' - Report time in seconds. 0 = disabled (default) or from 1 to 255 seconds.
+    /// * `report` - The reporting interval in seconds (0 = disabled, 1-255 seconds).
     pub async fn set_automatic_report(&mut self, report: proto::AutomaticReport) -> Result<()> {
         Ok(self
             .ctx
@@ -90,7 +145,11 @@ impl R4DCB08 {
             .await??)
     }
 
-    /// Read the current baud rate
+    /// Reads the current Modbus baud rate.
+    ///
+    /// # Returns
+    ///
+    /// A `Result<proto::BaudRate>` containing the baud rate setting.
     pub async fn read_baud_rate(&mut self) -> Result<proto::BaudRate> {
         let rsp = self
             .ctx
@@ -99,9 +158,30 @@ impl R4DCB08 {
         Ok(proto::BaudRate::decode_from_holding_registers(&rsp))
     }
 
-    /// Set the baud rate.
+    /// Sets the Modbus baud rate.
     ///
-    /// Note: The baud rate will be updated when the module is powered up again!
+    /// **Note:** The new baud rate takes effect after a power cycle.
+    ///
+    /// # Arguments
+    ///
+    /// * `baud_rate` - The desired baud rate.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// use r4dcb08_lib::protocol::BaudRate;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// # let mut client = R4DCB08::new(ctx);
+    /// // Set the baud rate to 9600.
+    /// let baud_rate = BaudRate::try_from(9600)?;
+    /// client.set_baud_rate(baud_rate)?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn set_baud_rate(&mut self, baud_rate: proto::BaudRate) -> Result<()> {
         Ok(self
             .ctx
@@ -112,7 +192,9 @@ impl R4DCB08 {
             .await??)
     }
 
-    /// Reset the device to the factory default settings.
+    /// Resets the device to factory default settings.
+    ///
+    /// **Note:** After this operation, the device will no longer be responsive! To complete the reset, you must turn the power off and on again.
     pub async fn factory_reset(&mut self) -> Result<()> {
         Ok(self
             .ctx
@@ -123,11 +205,14 @@ impl R4DCB08 {
             .await??)
     }
 
-    /// Reads the current Modbus address
+    /// Reads the current Modbus device address.
     ///
-    /// Note: When using this command, only one temperature module can be connected to the RS485 bus,
-    /// more than one will be wrong!
-    /// The connected modbus address must be the broadcast address 255.
+    /// **Warning:** Ensure only one module is connected when using this command.
+    /// The connected Modbus address must be set to [proto::Address::BROADCAST].
+    ///
+    /// # Returns
+    ///
+    /// A `Result<proto::Address>` containing the Modbus address.
     pub async fn read_address(&mut self) -> Result<proto::Address> {
         let rsp = self
             .ctx
@@ -136,9 +221,11 @@ impl R4DCB08 {
         Ok(proto::Address::decode_from_holding_registers(&rsp))
     }
 
-    /// Set the Modbus address
+    /// Sets a new Modbus device address.
     ///
-    /// * 'address' - The address can be from 1 to 247.
+    /// # Arguments
+    ///
+    /// * `address` - The new address.
     pub async fn set_address(&mut self, address: proto::Address) -> Result<()> {
         Ok(self
             .ctx

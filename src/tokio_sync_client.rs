@@ -25,7 +25,7 @@ impl R4DCB08 {
     /// # fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
     /// let mut client = R4DCB08::new(ctx);
-    /// let temperatures = client.read_temperatures()?;
+    /// let temperatures = client.read_temperatures()??;
     /// println!("Temperatures in °C: {}", temperatures);
     /// # Ok(())
     /// # }

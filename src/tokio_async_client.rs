@@ -25,7 +25,7 @@ impl R4DCB08 {
     /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     /// let ctx = tokio_modbus::client::tcp::connect("127.0.0.1:502".parse()?).await?;
     /// let mut client = R4DCB08::new(ctx);
-    /// let temperatures = client.read_temperatures()??;
+    /// let temperatures = client.read_temperatures().await??;
     /// println!("Temperatures in °C: {}", temperatures);
     /// # Ok(())
     /// # }
@@ -100,7 +100,7 @@ impl R4DCB08 {
     /// // Set the temperature correction for temperature sensor channel 3 to 1.3°C.
     /// let channel = Channel::try_from(3)?;
     /// let temperature = Temperature::try_from(1.3)?;
-    /// client.set_temperature_correction(channel, temperature)??;
+    /// client.set_temperature_correction(channel, temperature).await??;
     /// # Ok(())
     /// # }
     /// ```
@@ -189,7 +189,7 @@ impl R4DCB08 {
     /// # let mut client = R4DCB08::new(ctx);
     /// // Set the baud rate to 9600.
     /// let baud_rate = BaudRate::try_from(9600)?;
-    /// client.set_baud_rate(baud_rate)??;
+    /// client.set_baud_rate(baud_rate).await??;
     /// # Ok(())
     /// # }
     /// ```

@@ -1,160 +1,246 @@
 use crate::protocol as proto;
-use std::time::Duration;
 use tokio_modbus::prelude::{Reader, Writer};
 
-type Result<T> = std::result::Result<T, crate::tokio_error::Error>;
-
+/// Asynchronous client for interacting with the R4DCB08 temperature module over Modbus.
+///
+/// This struct provides methods to communicate with the module, including reading temperatures,
+/// configuring settings, and modifying operational parameters.
 pub struct R4DCB08 {
     ctx: tokio_modbus::client::Context,
 }
 
 impl R4DCB08 {
-    /// Constructs a new R4DCB08 client
+    /// Creates a new R4DCB08 client with the given Modbus context.
+    ///
+    /// # Arguments
+    ///
+    /// * `ctx` - An asynchronous Modbus client context.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use r4dcb08_lib::tokio_async_client::R4DCB08;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// let ctx = tokio_modbus::client::tcp::connect("127.0.0.1:502".parse()?).await?;
+    /// let mut client = R4DCB08::new(ctx);
+    /// let temperatures = client.read_temperatures()??;
+    /// println!("Temperatures in °C: {}", temperatures);
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn new(ctx: tokio_modbus::client::Context) -> Self {
         Self { ctx }
     }
 
-    /// Read the current temperature from all channels in °C.
-    /// If a channel is not connected or an error is occurred, NaN is returned.
+    /// Reads the current temperatures from all available channels in degrees Celsius (°C).
     ///
-    /// The returned temperature is corrected by the temperature correction
-    pub async fn read_temperature(&mut self) -> Result<Vec<f32>> {
+    /// If a channel is not connected or an error occurs, NaN is returned for that channel.
+    ///
+    /// # Returns
+    ///
+    /// A `tokio_modbus::Result<proto::Temperatures>` containing the temperatures for all channels.
+    pub async fn read_temperatures(&mut self) -> tokio_modbus::Result<proto::Temperatures> {
+        let rsp = self
+            .ctx
+            .read_holding_registers(proto::Temperatures::ADDRESS, proto::Temperatures::QUANTITY)
+            .await?;
+        Ok(match rsp {
+            Ok(rsp) => Ok(proto::Temperatures::decode_from_holding_registers(&rsp)),
+            Err(err) => Err(err),
+        })
+    }
+
+    /// Reads the configured temperature correction values for all channels.
+    ///
+    /// # Returns
+    ///
+    /// A `tokio_modbus::Result<proto::TemperatureCorrection>` containing correction values per channel.
+    pub async fn read_temperature_correction(
+        &mut self,
+    ) -> tokio_modbus::Result<proto::TemperatureCorrection> {
         let rsp = self
             .ctx
             .read_holding_registers(
-                proto::READ_TEMPERATURE_REG_ADDR,
-                proto::READ_TEMPERATURE_REG_QUAN,
+                proto::TemperatureCorrection::ADDRESS,
+                proto::TemperatureCorrection::QUANTITY,
             )
-            .await??;
-        Ok(rsp
-            .iter()
-            .map(|value| proto::degree_celsius_decode(*value))
-            .collect::<Vec<_>>())
+            .await?;
+        Ok(match rsp {
+            Ok(rsp) => Ok(proto::TemperatureCorrection::decode_from_holding_registers(
+                &rsp,
+            )),
+            Err(err) => Err(err),
+        })
     }
 
-    /// Read the current temperature correction values form all channels in °C.
-    pub async fn read_temperature_correction(&mut self) -> Result<Vec<f32>> {
+    /// Sets a temperature correction value for a specific channel.
+    ///
+    /// # Arguments
+    ///
+    /// * `channel` - The temperature sensor channel.
+    /// * `correction` - The correction value in °C. Positive values are added, negative values are subtracted.
+    ///   A value of 0.0 disables this correction.
+    ///
+    /// # Returns
+    ///
+    /// A `tokio_modbus::Result<()>` indicating success or failure.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use r4dcb08_lib::tokio_async_client::R4DCB08;
+    /// use r4dcb08_lib::protocol::{Channel, Temperature};
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let ctx = tokio_modbus::client::tcp::connect("127.0.0.1:502".parse()?).await?;
+    /// # let mut client = R4DCB08::new(ctx);
+    /// // Set the temperature correction for temperature sensor channel 3 to 1.3°C.
+    /// let channel = Channel::try_from(3)?;
+    /// let temperature = Temperature::try_from(1.3)?;
+    /// client.set_temperature_correction(channel, temperature)??;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn set_temperature_correction(
+        &mut self,
+        channel: proto::Channel,
+        correction: proto::Temperature,
+    ) -> tokio_modbus::Result<()> {
+        self.ctx
+            .write_single_register(
+                proto::TemperatureCorrection::channel_address(channel),
+                proto::TemperatureCorrection::encode_for_write_register(correction),
+            )
+            .await
+    }
+
+    /// Reads the automatic temperature reporting interval.
+    ///
+    /// # Returns
+    ///
+    /// A `tokio_modbus::Result<proto::AutomaticReport>` indicating the configured reporting interval.
+    pub async fn read_automatic_report(&mut self) -> tokio_modbus::Result<proto::AutomaticReport> {
         let rsp = self
             .ctx
             .read_holding_registers(
-                proto::READ_TEMPERATURE_CORRECTION_REG_ADDR,
-                proto::READ_TEMPERATURE_CORRECTION_REG_QUAN,
+                proto::AutomaticReport::ADDRESS,
+                proto::AutomaticReport::QUANTITY,
             )
-            .await??;
-        Ok(rsp
-            .iter()
-            .map(|value| proto::degree_celsius_decode(*value))
-            .collect::<Vec<_>>())
+            .await?;
+        Ok(match rsp {
+            Ok(rsp) => Ok(proto::AutomaticReport::decode_from_holding_registers(&rsp)),
+            Err(err) => Err(err),
+        })
     }
 
-    /// Set the temperature correction value per channel.
+    /// Sets the automatic temperature reporting interval.
     ///
-    /// The temperature sensor may have an error with the actual temperature.
-    /// This correction value can correct the error. The unit is 0.1 °C.
-    /// If the correction value is a positive number, the value is added at the current temperature,
-    /// and if it is a negative number, the value is subtracted.
-    /// Setting it to 0.0 disables this feature.
+    /// # Arguments
     ///
-    /// * 'channel' - Temperature sensore channel 0 to 7.
-    /// * 'correction' - Correction value in °Celsius
-    pub async fn set_temperature_correction(&mut self, channel: u8, correction: f32) -> Result<()> {
-        proto::write_temperature_correction_check_channel(channel)?;
-        Ok(self
-            .ctx
+    /// * `report` - The reporting interval in seconds (0 = disabled, 1-255 seconds).
+    pub async fn set_automatic_report(
+        &mut self,
+        report: proto::AutomaticReport,
+    ) -> tokio_modbus::Result<()> {
+        self.ctx
             .write_single_register(
-                proto::WRITE_TEMPERATURE_CORRECTION_REG_ADDR + channel as u16,
-                proto::degree_celsius_encode(correction)?,
+                proto::AutomaticReport::ADDRESS,
+                report.encode_for_write_register(),
             )
-            .await??)
+            .await
     }
 
-    /// Read temperature automatic reporting
-    pub async fn read_automatic_report(&mut self) -> Result<Duration> {
+    /// Reads the current Modbus baud rate.
+    ///
+    /// # Returns
+    ///
+    /// A `tokio_modbus::Result<proto::BaudRate>` containing the baud rate setting.
+    pub async fn read_baud_rate(&mut self) -> tokio_modbus::Result<proto::BaudRate> {
         let rsp = self
             .ctx
-            .read_holding_registers(
-                proto::READ_AUTOMATIC_REPORT_REG_ADDR,
-                proto::READ_AUTOMATIC_REPORT_REG_QUAN,
-            )
-            .await??;
-        Ok(proto::read_automatic_report_decode_duration(
-            *rsp.first().expect("Result on success expected"),
-        ))
+            .read_holding_registers(proto::BaudRate::ADDRESS, proto::BaudRate::QUANTITY)
+            .await?;
+        Ok(match rsp {
+            Ok(rsp) => Ok(proto::BaudRate::decode_from_holding_registers(&rsp)),
+            Err(err) => Err(err),
+        })
     }
 
-    /// Set temperature automatic reporting
+    /// Sets the Modbus baud rate.
     ///
-    /// The value is set for all 8 channels at the same time.
+    /// **Note:** The new baud rate takes effect after a power cycle.
     ///
-    /// * 'report_in_sec' - Report time in seconds. 0 = disabled (default) or from 1 to 255 seconds.
-    pub async fn set_automatic_report(&mut self, report: Duration) -> Result<()> {
-        Ok(self
-            .ctx
+    /// # Arguments
+    ///
+    /// * `baud_rate` - The desired baud rate.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use r4dcb08_lib::tokio_async_client::R4DCB08;
+    /// use r4dcb08_lib::protocol::BaudRate;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
+    /// # let ctx = tokio_modbus::client::tcp::connect("127.0.0.1:502".parse()?).await?;
+    /// # let mut client = R4DCB08::new(ctx);
+    /// // Set the baud rate to 9600.
+    /// let baud_rate = BaudRate::try_from(9600)?;
+    /// client.set_baud_rate(baud_rate)??;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn set_baud_rate(&mut self, baud_rate: proto::BaudRate) -> tokio_modbus::Result<()> {
+        self.ctx
             .write_single_register(
-                proto::WRITE_AUTOMATIC_REPORT_REG_ADDR,
-                proto::write_automatic_report_encode_duration(report)?,
+                proto::BaudRate::ADDRESS,
+                baud_rate.encode_for_write_register(),
             )
-            .await??)
+            .await
     }
 
-    /// Read the current baud rate
-    pub async fn read_baud_rate(&mut self) -> Result<proto::BaudRate> {
+    /// Resets the device to factory default settings.
+    ///
+    /// **Note:** After this operation, the device will no longer be responsive! To complete the reset, you must turn the power off and on again.
+    pub async fn factory_reset(&mut self) -> tokio_modbus::Result<()> {
+        self.ctx
+            .write_single_register(
+                proto::FactoryReset::ADDRESS,
+                proto::FactoryReset::encode_for_write_register(),
+            )
+            .await
+    }
+
+    /// Reads the current Modbus device address.
+    ///
+    /// **Warning:** Ensure only one module is connected when using this command.
+    /// The connected Modbus address must be set to [proto::Address::BROADCAST].
+    ///
+    /// # Returns
+    ///
+    /// A `tokio_modbus::Result<proto::Address>` containing the Modbus address.
+    pub async fn read_address(&mut self) -> tokio_modbus::Result<proto::Address> {
         let rsp = self
             .ctx
-            .read_holding_registers(
-                proto::READ_BAUD_RATE_REG_ADDR,
-                proto::READ_BAUD_RATE_REG_QUAN,
-            )
-            .await??;
-        Ok(proto::BaudRate::decode(
-            *rsp.first().expect("Result on success expected"),
-        ))
+            .read_holding_registers(proto::Address::ADDRESS, proto::Address::QUANTITY)
+            .await?;
+        Ok(match rsp {
+            Ok(rsp) => Ok(proto::Address::decode_from_holding_registers(&rsp)),
+            Err(err) => Err(err),
+        })
     }
 
-    /// Set the baud rate.
+    /// Sets a new Modbus device address.
     ///
-    /// Note: The baud rate will be updated when the module is powered up again!
-    pub async fn set_baud_rate(&mut self, baud_rate: proto::BaudRate) -> Result<()> {
-        Ok(self
-            .ctx
-            .write_single_register(proto::WRITE_BAUD_RATE_REG_ADDR, baud_rate.encode())
-            .await??)
-    }
-
-    /// Reset the device to the factory default settings.
-    pub async fn factory_reset(&mut self) -> Result<()> {
-        Ok(self
-            .ctx
-            .write_single_register(
-                proto::WRITE_FACTORY_RESET_REG_ADDR,
-                proto::WRITE_FACTORY_RESET_REG_DATA,
-            )
-            .await??)
-    }
-
-    /// Reads the current Modbus address
+    /// # Arguments
     ///
-    /// Note: When using this command, only one temperature module can be connected to the RS485 bus,
-    /// more than one will be wrong!
-    /// The connected modbus address must be the broadcast address 255.
-    pub async fn read_address(&mut self) -> Result<u8> {
-        let rsp = self
-            .ctx
-            .read_holding_registers(proto::READ_ADDRESS_REG_ADDR, proto::READ_ADDRESS_REG_QUAN)
-            .await??;
-        Ok(*rsp.first().expect("Result on success expected") as u8)
-    }
-
-    /// Set the Modbus address
-    ///
-    /// * 'address' - The address can be from 1 to 247.
-    pub async fn set_address(&mut self, address: u8) -> Result<()> {
-        Ok(self
-            .ctx
-            .write_single_register(
-                proto::WRITE_ADDRESS_REG_ADDR,
-                proto::write_address_encode_address(address)?,
-            )
-            .await??)
+    /// * `address` - The new address.
+    pub async fn set_address(&mut self, address: proto::Address) -> tokio_modbus::Result<()> {
+        self.ctx
+            .write_single_register(proto::Address::ADDRESS, address.encode_for_write_register())
+            .await
     }
 }

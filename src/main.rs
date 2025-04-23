@@ -7,80 +7,7 @@ use log::*;
 use paho_mqtt as mqtt;
 use r4dcb08_lib::{protocol as proto, tokio_sync_client::R4DCB08};
 use std::io::{Write, stdout};
-use std::{fmt, ops::Deref, panic, time::Duration};
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct BaudRate(proto::BaudRate);
-
-impl fmt::Display for BaudRate {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.as_u16())
-    }
-}
-
-impl BaudRate {
-    pub fn iter() -> core::array::IntoIter<Self, 5> {
-        [
-            Self(proto::BaudRate::B1200),
-            Self(proto::BaudRate::B2400),
-            Self(proto::BaudRate::B4800),
-            Self(proto::BaudRate::B9600),
-            Self(proto::BaudRate::B19200),
-        ]
-        .into_iter()
-    }
-
-    pub fn from(baud_rate: proto::BaudRate) -> Self {
-        Self(baud_rate)
-    }
-
-    pub fn from_u16(baud_rate: u16) -> Result<Self> {
-        match baud_rate {
-            1200 => Ok(Self(proto::BaudRate::B1200)),
-            2400 => Ok(Self(proto::BaudRate::B2400)),
-            4800 => Ok(Self(proto::BaudRate::B4800)),
-            9600 => Ok(Self(proto::BaudRate::B9600)),
-            19200 => Ok(Self(proto::BaudRate::B19200)),
-            _ => bail!("Baud rate must by any value of 1200, 2400, 4800, 9600, 19200."),
-        }
-    }
-
-    pub fn as_u16(&self) -> u16 {
-        match self.0 {
-            proto::BaudRate::B1200 => 1200,
-            proto::BaudRate::B2400 => 2400,
-            proto::BaudRate::B4800 => 4800,
-            proto::BaudRate::B9600 => 9600,
-            proto::BaudRate::B19200 => 19200,
-        }
-    }
-
-    pub fn minimum_rtu_delay(&self) -> Duration {
-        // https://minimalmodbus.readthedocs.io/en/stable/serialcommunication.html#timing-of-the-serial-communications
-
-        fn calc(rate: u64) -> Duration {
-            let bit_time = Duration::from_secs_f64(1.0 / rate as f64);
-            let char_time = bit_time * 11;
-            let result = Duration::from_millis((char_time.as_secs_f64() * 3.5 * 1_000.0) as u64);
-            let min_duration = Duration::from_micros(1_750);
-            if result < min_duration {
-                min_duration
-            } else {
-                result
-            }
-        }
-
-        calc(self.as_u16() as u64)
-    }
-}
-
-impl Deref for BaudRate {
-    type Target = proto::BaudRate;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
+use std::{ops::Deref, panic, time::Duration};
 
 fn default_device_name() -> String {
     if cfg!(target_os = "windows") {
@@ -90,76 +17,70 @@ fn default_device_name() -> String {
     }
 }
 
-fn parse_channel(s: &str) -> Result<u8, String> {
-    clap_num::number_range(s, proto::CHANNELS_MIN, proto::CHANNELS_MAX)
+fn parse_channel(s: &str) -> Result<proto::Channel, String> {
+    proto::Channel::try_from(clap_num::maybe_hex::<u8>(s)?).map_err(|e| format!("{e}"))
 }
 
-fn parse_address(s: &str) -> Result<u8, String> {
-    clap_num::maybe_hex_range(s, proto::ADDRESS_MIN, proto::ADDRESS_MAX)
+fn parse_address(s: &str) -> Result<proto::Address, String> {
+    proto::Address::try_from(clap_num::maybe_hex::<u8>(s)?).map_err(|e| format!("{e}"))
 }
 
-fn parse_baud_rate(s: &str) -> Result<BaudRate, String> {
-    let val = s.parse::<u16>().map_err(|e| format!("{e}"))?;
-    let val = BaudRate::from_u16(val).map_err(|e| format!("{e}"))?;
-    Ok(val)
+fn parse_automatic_report(s: &str) -> Result<proto::AutomaticReport, String> {
+    Ok(proto::AutomaticReport::from(
+        clap_num::maybe_hex::<u8>(s).map_err(|e| e.to_string())?,
+    ))
 }
 
-fn parse_degree_celsius(s: &str) -> Result<f32, String> {
-    // clap_num::number_range(s, proto::DEGREE_CELSIUS_MIN, proto::DEGREE_CELSIUS_MAX)
+fn parse_baud_rate(s: &str) -> Result<proto::BaudRate, String> {
+    proto::BaudRate::try_from(s.parse::<u16>().map_err(|e| format!("{e}"))?)
+        .map_err(|e| format!("{e}"))
+}
+
+fn parse_degree_celsius(s: &str) -> Result<proto::Temperature, String> {
     let val = s.parse::<f32>().map_err(|e| format!("{e}"))?;
-    if val > proto::DEGREE_CELSIUS_MAX {
-        Err(format!("exceeds maximum of {}", proto::DEGREE_CELSIUS_MAX))
-    } else if val < proto::DEGREE_CELSIUS_MIN {
-        Err(format!(
-            "less than minimum of {}",
-            proto::DEGREE_CELSIUS_MIN
-        ))
-    } else {
-        Ok(val)
-    }
+    proto::Temperature::try_from(val).map_err(|e| format!("{e}"))
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq)]
 enum CliConnection {
-    /// Use Modbus/TCP connection
+    /// Connect to a temperature collector via Modbus/TCP
     Tcp {
-        // TCP address (e.g. 192.168.0.222:502)
+        // The IP address or hostname with port of the Modbus TCP device (e.g. 192.168.0.222:502)
         address: String,
 
         #[command(subcommand)]
         command: CliCommands,
     },
-    /// Use Modbus/RTU connection
+    /// Connect to a temperature collector via Modbus/RTU
     Rtu {
-        /// Device
+        /// Specify the serial device
         #[arg(short, long, default_value_t = default_device_name())]
         device: String,
 
         /// Baud rate any of 1200, 2400, 4800, 9600, 19200
-        #[arg(long, default_value_t = BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE), value_parser = parse_baud_rate)]
-        baud_rate: BaudRate,
+        #[arg(long, default_value_t = proto::BaudRate::default(), value_parser = parse_baud_rate)]
+        baud_rate: proto::BaudRate,
 
-        /// RS485 address from 1 to 247
-        #[arg(short, long, default_value_t = proto::FACTORY_DEFAULT_ADDRESS, value_parser = parse_address)]
-        address: u8,
+        /// The RS485 address from 1 to 247
+        #[arg(short, long, default_value_t = proto::Address::default(), value_parser = parse_address)]
+        address: proto::Address,
 
         #[command(subcommand)]
         command: CliCommands,
     },
-    /// Scan for a R4DCB08 temperature collector on any supported baud rate and query the Modbus RS485 address.
+    /// Scan for R4DCB08 devices on all supported baud rates and detect Modbus RS485 addresses
     RtuScan {
-        /// Device
+        /// Specify the serial device
         #[arg(short, long, default_value_t = default_device_name())]
         device: String,
     },
 }
 
-#[derive(Subcommand, Debug, Clone, PartialEq, Default)]
+#[derive(Subcommand, Debug, Clone, PartialEq)]
 enum DaemonMode {
-    #[default]
-    /// Print values to stdout [default]
+    /// Print temperature values to the console
     Stdout,
-    /// Send values to a MQTT Broker
+    /// Send temperature values to an MQTT broker
     Mqtt {
         /// URL to the MQTT broker like: mqtt://localhost:1883
         url: String,
@@ -184,71 +105,79 @@ enum DaemonMode {
 
 #[derive(Subcommand, Debug, Clone, PartialEq)]
 enum CliCommands {
-    /// Daemon mode to read the current temperature from all channels
+    /// Run continuously to read temperatures from all sensor channels (optional MQTT integration)
     Daemon {
-        /// Interval for repeated polling of the values
+        /// The polling interval for reading values
         #[arg(value_parser = humantime::parse_duration, short, long, default_value = "2sec")]
-        poll_iterval: Duration,
+        poll_interval: Duration,
 
         #[command(subcommand)]
         mode: DaemonMode,
     },
 
-    /// Read the current temperature from all channels
+    /// Read the current temperature from all sensor channels
     Read,
 
-    /// Read the current temperature correction values form all channels
+    /// Read the current temperature correction values form all sensor channels
     ReadCorrection,
 
-    /// Read the current baud rate
+    /// Read the current communication baud rate
     ReadBaudRate,
 
     /// Read temperature automatic reporting
     ReadAutomaticReport,
 
-    /// Read all values
+    /// Read all available device values
     ReadAll,
 
-    /// Queries the current RS485 address, this message is broadcasted.
-    /// Only one temperature module can be connected to the RS485 bus, more than one will be wrong!
+    /// Query the current RS485 address (broadcast mode - make sure there is only one device connected to the RS485 bus)
     QueryAddress,
 
-    /// Set the temperature correction per channel
+    /// Set a temperature correction offset to a specific sensor channel.
+    /// Useful for calibrating sensors to compensate for inaccuracies.
+    #[clap(verbatim_doc_comment)]
     SetCorrection {
-        /// Temperature sensore channel 0 to 7
+        /// Target temperature sensor channel 0 to 7
         #[arg(value_parser = parse_channel)]
-        channel: u8,
-        /// Correction value in °Celsius
+        channel: proto::Channel,
+        /// Correction value in °C, positive or negative, in 0.1°C increments
         #[arg(value_parser = parse_degree_celsius)]
-        value: f32,
+        value: proto::Temperature,
     },
 
-    /// Set the baud rate. After the command you need to power up the module again!
+    /// Set the baud rate.
+    /// To take effect, you must turn the power off and on again.
+    /// All devices on a bus must use the same baud rate.
+    #[clap(verbatim_doc_comment)]
     SetBaudRate {
         /// The new baud rate any value of 1200, 2400, 4800, 9600, 19200
         #[arg(value_parser = parse_baud_rate)]
-        new_baud_rate: BaudRate,
+        new_baud_rate: proto::BaudRate,
     },
 
-    /// Set the RS485 address
+    /// Set a new RS485 address for the device.
+    /// The new address must be unique on the RS485 bus to avoid conflicts.
+    #[clap(verbatim_doc_comment)]
     SetAddress {
-        /// The RS485 address can be from 1 to 247
+        /// The new RS485 address can be from 1 to 247
         #[arg(value_parser = parse_address)]
-        address: u8,
+        address: proto::Address,
     },
 
-    /// Set temperature automatic reporting
+    /// Enable or configure automatic temperature reporting
     SetAutomaticReport {
         /// Report time in seconds. 0 = disabled (default) or from 1 to 255 seconds.
-        report_time: u8,
+        #[arg(value_parser = parse_automatic_report)]
+        report_time: proto::AutomaticReport,
     },
 
-    /// Reset the device to the factory default settings
+    /// Restore the device to factory default settings
     FactoryReset,
 }
 
 const fn about_text() -> &'static str {
-    "R4DCB08 temperature collector/monitor for the command line"
+    "tempcol - R4DCB08 Temperature Collector CLI\n\
+    A command-line tool for reading and managing R4DCB08 temperature collectors via Modbus RTU/TCP."
 }
 
 #[derive(Parser, Debug)]
@@ -261,14 +190,14 @@ struct CliArgs {
     #[command(subcommand)]
     pub connection: CliConnection,
 
-    /// Modbus Input/Output operations timeout
+    /// Modbus I/O timeout
     #[arg(value_parser = humantime::parse_duration, long, default_value = "200ms")]
     timeout: Duration,
 
     // According to MODBUS specification:
     // Wait at least 3.5 char between frames
     // However, some USB - RS485 dongles requires at least 10ms to switch between TX and RX, so use a save delay between frames
-    /// Delay between multiple modbus commands
+    /// Delay between multiple Modbus commands
     #[arg(value_parser = humantime::parse_duration, long, default_value = "50ms")]
     delay: Duration,
 }
@@ -311,9 +240,9 @@ fn logging_init(loglevel: LevelFilter) -> LoggerHandle {
 macro_rules! print_temperature {
     ($device:expr) => {
         let rsp = $device
-            .read_temperature()
-            .with_context(|| "Cannot read temperature")?;
-        println!("Temperatures in °C: {rsp:?}");
+            .read_temperatures()
+            .with_context(|| "Cannot read temperatures")??;
+        println!("Temperatures in °C: {rsp}");
     };
 }
 
@@ -321,32 +250,43 @@ macro_rules! print_temperature_correction {
     ($device:expr) => {
         let rsp = $device
             .read_temperature_correction()
-            .with_context(|| "Cannot read temperature correction")?;
-        println!("Temperature corrections in °C: {rsp:?}");
+            .with_context(|| "Cannot read temperature correction")??;
+        println!("Temperature corrections in °C: {rsp}");
     };
 }
 macro_rules! print_baud_rate {
     ($device:expr) => {
-        let rsp = $device
+        let baud_rate = $device
             .read_baud_rate()
-            .with_context(|| "Cannot read baud rate")?;
-        println!("Baud rate: {}", BaudRate::from(rsp));
+            .with_context(|| "Cannot read baud rate")??;
+        println!("Baud rate: {}", baud_rate);
     };
 }
 macro_rules! print_automatic_report {
     ($device:expr) => {
         let rsp = $device
             .read_automatic_report()
-            .with_context(|| "Cannot read automatic report")?;
-        println!(
-            "Automatic report in seconds (0 means disabled): {}",
-            rsp.as_secs()
-        );
+            .with_context(|| "Cannot read automatic report")??;
+        println!("Automatic report in seconds (0 means disabled): {}", *rsp);
     };
 }
 
-fn check_rtu_delay(delay: Duration, baud_rate: &BaudRate) -> Duration {
-    let min_rtu_delay = baud_rate.minimum_rtu_delay();
+fn minimum_rtu_delay(baud_rate: &proto::BaudRate) -> Duration {
+    // https://minimalmodbus.readthedocs.io/en/stable/serialcommunication.html#timing-of-the-serial-communications
+    let rate = u16::from(baud_rate) as f64;
+    let bit_time = Duration::from_secs_f64(1.0 / rate);
+    let char_time = bit_time * 11;
+    let result = Duration::from_millis((char_time.as_secs_f64() * 3.5 * 1_000.0) as u64);
+    let min_duration = Duration::from_micros(1_750);
+    if result < min_duration {
+        min_duration
+    } else {
+        result
+    }
+}
+
+fn check_rtu_delay(delay: Duration, baud_rate: &proto::BaudRate) -> Duration {
+    let min_rtu_delay = minimum_rtu_delay(baud_rate);
     if delay < min_rtu_delay {
         warn!(
             "Your RTU delay of {:?} is below the minimum delay of {:?}, fallback to minimum",
@@ -357,19 +297,21 @@ fn check_rtu_delay(delay: Duration, baud_rate: &BaudRate) -> Duration {
     delay
 }
 
-fn rtu_scan(device: &String, baud_rate: &BaudRate, args: &CliArgs) -> Result<u8> {
+fn rtu_scan(
+    device: &String,
+    baud_rate: &proto::BaudRate,
+    args: &CliArgs,
+) -> Result<proto::Address> {
     let mut d = R4DCB08::new(
         tokio_modbus::client::sync::rtu::connect_slave(
-            &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate.as_u16() as u32),
-            tokio_modbus::Slave(proto::READ_ADDRESS_BROADCAST_ADDRESS),
+            &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate),
+            tokio_modbus::Slave(*proto::Address::BROADCAST),
         )
         .with_context(|| format!("Cannot open device {} baud rate {}", device, baud_rate))?,
     );
     d.set_timeout(args.timeout);
-    let rsp = d
-        .read_address()
-        .with_context(|| "Cannot read RS485 address")?;
-    Ok(rsp)
+    Ok(d.read_address()
+        .with_context(|| "Cannot read RS485 address")??)
 }
 
 fn confirm_only_one_module_connected() -> Result<bool> {
@@ -392,14 +334,20 @@ fn main() -> Result<()> {
         if !confirm_only_one_module_connected()? {
             return Ok(());
         }
-        for baud_rate in BaudRate::iter() {
+        for baud_rate in [
+            proto::BaudRate::B1200,
+            proto::BaudRate::B2400,
+            proto::BaudRate::B4800,
+            proto::BaudRate::B9600,
+            proto::BaudRate::B19200,
+        ] {
             print!("Scan RTU {} baud rate {} ... ", device, baud_rate);
             stdout().flush().unwrap();
             let delay = check_rtu_delay(delay, &baud_rate);
             match rtu_scan(device, &baud_rate, &args) {
                 Ok(address) => {
                     println!("succeeded");
-                    println!("RS485 Address: {:#04x}", address);
+                    println!("RS485 Address: {}", address);
                     println!("Baud rate: {}", baud_rate);
                     return Ok(());
                 }
@@ -440,30 +388,27 @@ fn main() -> Result<()> {
                 if !confirm_only_one_module_connected()? {
                     return Ok(());
                 }
-                if *address != proto::READ_ADDRESS_BROADCAST_ADDRESS {
+                let broadcast_address = proto::Address::BROADCAST;
+                if address != &broadcast_address {
                     info!(
-                        "Ignore address {:#04x} use broadcast address {:#04x}",
-                        address,
-                        proto::READ_ADDRESS_BROADCAST_ADDRESS
+                        "Ignore address {} use broadcast address {}",
+                        address, broadcast_address
                     );
                 }
-                proto::READ_ADDRESS_BROADCAST_ADDRESS
+                broadcast_address
             } else {
                 *address
             };
             trace!(
-                "Open RTU {} address {:#04x} baud rate {}",
+                "Open RTU {} address {} baud rate {}",
                 device, address, baud_rate
             );
             delay = check_rtu_delay(delay, baud_rate);
             (
                 R4DCB08::new(
                     tokio_modbus::client::sync::rtu::connect_slave(
-                        &r4dcb08_lib::tokio_serial::serial_port_builder(
-                            device,
-                            baud_rate.as_u16() as u32,
-                        ),
-                        tokio_modbus::Slave(address),
+                        &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate),
+                        tokio_modbus::Slave(*address),
                     )
                     .with_context(|| {
                         format!("Cannot open device {} baud rate {}", device, baud_rate)
@@ -477,7 +422,10 @@ fn main() -> Result<()> {
     d.set_timeout(args.timeout);
 
     match command {
-        CliCommands::Daemon { poll_iterval, mode } => match mode {
+        CliCommands::Daemon {
+            poll_interval: poll_iterval,
+            mode,
+        } => match mode {
             DaemonMode::Stdout => loop {
                 print_temperature!(&mut d);
                 std::thread::sleep(delay.max(*poll_iterval));
@@ -514,7 +462,7 @@ fn main() -> Result<()> {
                     .with_context(|| "MQTT client unable to connect")?;
 
                 loop {
-                    let reply = d.read_temperature()?;
+                    let reply = d.read_temperatures()?;
                     trace!("Temperature: {:?}", reply);
                     for (channel, temperature) in reply.iter().enumerate() {
                         let topic = format!("{topic}/{channel}");
@@ -550,38 +498,36 @@ fn main() -> Result<()> {
         CliCommands::QueryAddress => {
             let rsp = d
                 .read_address()
-                .with_context(|| "Cannot read RS485 address")?;
-            println!("RS485 address: {:#04x}", rsp);
+                .with_context(|| "Cannot read RS485 address")??;
+            println!("RS485 address: {}", rsp);
         }
         CliCommands::SetCorrection { channel, value } => {
             d.set_temperature_correction(*channel, *value)
-                .with_context(|| "Cannot set temperature correction")?;
+                .with_context(|| "Cannot set temperature correction")??;
         }
         CliCommands::SetBaudRate { new_baud_rate } => {
-            d.set_baud_rate(**new_baud_rate)
-                .with_context(|| "Cannot set baud rate")?;
-            println!("The baud rate will be updated when the module is powered up again!");
+            d.set_baud_rate(*new_baud_rate)
+                .with_context(|| "Cannot set baud rate")??;
+            println!("For the change to take effect, you must turn the power off and on again!");
         }
         CliCommands::SetAddress { address } => {
             d.set_address(*address)
-                .with_context(|| "Cannot set RS485 address")?;
+                .with_context(|| "Cannot set RS485 address")??;
         }
-        CliCommands::SetAutomaticReport {
-            report_time: report_in_seconds,
-        } => {
-            d.set_automatic_report(Duration::from_secs(*report_in_seconds as u64))
-                .with_context(|| "Cannot set automatic report")?;
+        CliCommands::SetAutomaticReport { report_time } => {
+            d.set_automatic_report(*report_time)
+                .with_context(|| "Cannot set automatic report")??;
         }
         CliCommands::FactoryReset => {
             println!(
                 "\
                 Reset to factory settings:\n\
-                address={:#04x} | baud rate={} | temperature correction all channels=0.0 | automatic report=0 (disabled)\n\
+                address={} | baud rate={} | temperature correction all sensor channels=0.0 | automatic report=0 (disabled)\n\
                 \n\
                 After this operation, the device will no longer be responsive!\n\
-                You must power off and on again to complete the reset.",
-                proto::FACTORY_DEFAULT_ADDRESS,
-                BaudRate::from(*proto::FACTORY_DEFAULT_BAUD_RATE)
+                To complete the reset, you must turn the power off and on again.",
+                proto::Address::default(),
+                proto::BaudRate::default()
             );
             let confirmation = Confirm::new()
                 .with_prompt("Do you want to continue?")
@@ -593,8 +539,16 @@ fn main() -> Result<()> {
             }
             print!("Check connection to temperature collector ... ");
             stdout().flush().unwrap();
-            match d.read_temperature() {
-                Ok(_) => println!("succeeded"),
+            match d.read_temperatures() {
+                Ok(rsp) => match rsp {
+                    Ok(_) => {
+                        println!("succeeded");
+                    }
+                    Err(error) => {
+                        println!("failed");
+                        return Err(error.into());
+                    }
+                },
                 Err(error) => {
                     println!("failed");
                     return Err(error.into());
@@ -602,10 +556,7 @@ fn main() -> Result<()> {
             }
             std::thread::sleep(delay);
             if let Err(error) = d.factory_reset() {
-                let ignore_error = if let r4dcb08_lib::tokio_error::Error::ModbusError(
-                    tokio_modbus::Error::Transport(error),
-                ) = &error
-                {
+                let ignore_error = if let tokio_modbus::Error::Transport(error) = &error {
                     if error.kind() == std::io::ErrorKind::TimedOut {
                         // After the a successful factory reset we get no response :-(
                         debug!("Reset to factory settings returned TimeOut error, can be ignored");
@@ -636,15 +587,10 @@ mod tests {
 
     #[test]
     fn rtu_delay() {
-        for baud_rate in BaudRate::iter() {
-            match baud_rate.as_u16() {
-                1200 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 32),
-                2400 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 16),
-                4800 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 8),
-                9600 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 4),
-                19200 => assert_eq!(baud_rate.minimum_rtu_delay().as_millis(), 2),
-                _ => unreachable!(),
-            }
-        }
+        assert_eq!(minimum_rtu_delay(&proto::BaudRate::B1200).as_millis(), 32);
+        assert_eq!(minimum_rtu_delay(&proto::BaudRate::B2400).as_millis(), 16);
+        assert_eq!(minimum_rtu_delay(&proto::BaudRate::B4800).as_millis(), 8);
+        assert_eq!(minimum_rtu_delay(&proto::BaudRate::B9600).as_millis(), 4);
+        assert_eq!(minimum_rtu_delay(&proto::BaudRate::B19200).as_millis(), 2)
     }
 }

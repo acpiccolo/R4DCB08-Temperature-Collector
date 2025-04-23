@@ -5,13 +5,22 @@
 [![CI](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
 
 # R4DCB08 Temperature Collector
+
 This Rust project enables communication with an **R4DCB08 temperature collector** using **Modbus RTU/TCP** from the command line.
+
+## Table of Contents
+- [Hardware Requirements](#hardware-requirements)
+- [Technical Specifications](#technical-specifications-r4dcb08)
+- [Installation & Compilation](#installation--compilation)
+- [Usage](#usage)
+- [Cargo Features](#cargo-features)
+- [License](#license)
 
 ## Hardware Requirements
 To use this tool, you need:
-* One or more **R4DCB08 temperature collectors**.
-* Up to **8 DS18B20** temperature sensors.
-* A **USB-RS485 converter** (for RTU mode).
+- One or more **R4DCB08 temperature collectors**.
+- Up to **8 DS18B20** temperature sensors.
+- A **USB-RS485 converter** (for RTU mode).
 
 ![R4DCB08 temperature collector](/images/r4dcb08.png)
 
@@ -27,7 +36,8 @@ To use this tool, you need:
 | **Communication Protocol** | Modbus RTU/TCP |
 
 ## Installation & Compilation
-### **Prerequisites**
+
+### Prerequisites
 Ensure you have the following dependencies installed before proceeding:
 - **Rust and Cargo**: Install via [rustup](https://rustup.rs/)
 - **Git**: To clone the repository
@@ -91,6 +101,7 @@ tempcol rtu --address 1 --baudrate 9600 daemon mqtt --username my_name --passwor
 | `tokio-tcp-sync` | Enable support synchronous tokio TCP client | - |
 | `tokio-tcp` | Enable support asynchronous tokio TCP client | - |
 | `bin-dependencies` | Enable all features required by the binary | ✅ |
+| `serde` | Enable the serde framework for protocol structures | - |
 
 ## License
 Licensed under either of:

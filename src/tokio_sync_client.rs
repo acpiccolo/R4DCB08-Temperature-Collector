@@ -381,5 +381,3 @@ impl R4DCB08 {
             .write_single_register(proto::Address::ADDRESS, address.encode_for_write_register())
     }
 }
-    }
-}

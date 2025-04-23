@@ -241,7 +241,7 @@ macro_rules! print_temperature {
     ($device:expr) => {
         let rsp = $device
             .read_temperatures()
-            .with_context(|| "Cannot read temperatures")?;
+            .with_context(|| "Cannot read temperatures")??;
         println!("Temperatures in °C: {rsp}");
     };
 }
@@ -250,7 +250,7 @@ macro_rules! print_temperature_correction {
     ($device:expr) => {
         let rsp = $device
             .read_temperature_correction()
-            .with_context(|| "Cannot read temperature correction")?;
+            .with_context(|| "Cannot read temperature correction")??;
         println!("Temperature corrections in °C: {rsp}");
     };
 }
@@ -258,7 +258,7 @@ macro_rules! print_baud_rate {
     ($device:expr) => {
         let baud_rate = $device
             .read_baud_rate()
-            .with_context(|| "Cannot read baud rate")?;
+            .with_context(|| "Cannot read baud rate")??;
         println!("Baud rate: {}", baud_rate);
     };
 }
@@ -266,7 +266,7 @@ macro_rules! print_automatic_report {
     ($device:expr) => {
         let rsp = $device
             .read_automatic_report()
-            .with_context(|| "Cannot read automatic report")?;
+            .with_context(|| "Cannot read automatic report")??;
         println!("Automatic report in seconds (0 means disabled): {}", *rsp);
     };
 }
@@ -310,8 +310,8 @@ fn rtu_scan(
         .with_context(|| format!("Cannot open device {} baud rate {}", device, baud_rate))?,
     );
     d.set_timeout(args.timeout);
-    d.read_address()
-        .with_context(|| "Cannot read RS485 address")
+    Ok(d.read_address()
+        .with_context(|| "Cannot read RS485 address")??)
 }
 
 fn confirm_only_one_module_connected() -> Result<bool> {
@@ -498,25 +498,25 @@ fn main() -> Result<()> {
         CliCommands::QueryAddress => {
             let rsp = d
                 .read_address()
-                .with_context(|| "Cannot read RS485 address")?;
+                .with_context(|| "Cannot read RS485 address")??;
             println!("RS485 address: {}", rsp);
         }
         CliCommands::SetCorrection { channel, value } => {
             d.set_temperature_correction(*channel, *value)
-                .with_context(|| "Cannot set temperature correction")?;
+                .with_context(|| "Cannot set temperature correction")??;
         }
         CliCommands::SetBaudRate { new_baud_rate } => {
             d.set_baud_rate(*new_baud_rate)
-                .with_context(|| "Cannot set baud rate")?;
+                .with_context(|| "Cannot set baud rate")??;
             println!("For the change to take effect, you must turn the power off and on again!");
         }
         CliCommands::SetAddress { address } => {
             d.set_address(*address)
-                .with_context(|| "Cannot set RS485 address")?;
+                .with_context(|| "Cannot set RS485 address")??;
         }
         CliCommands::SetAutomaticReport { report_time } => {
             d.set_automatic_report(*report_time)
-                .with_context(|| "Cannot set automatic report")?;
+                .with_context(|| "Cannot set automatic report")??;
         }
         CliCommands::FactoryReset => {
             println!(
@@ -540,7 +540,15 @@ fn main() -> Result<()> {
             print!("Check connection to temperature collector ... ");
             stdout().flush().unwrap();
             match d.read_temperatures() {
-                Ok(_) => println!("succeeded"),
+                Ok(rsp) => match rsp {
+                    Ok(_) => {
+                        println!("succeeded");
+                    }
+                    Err(error) => {
+                        println!("failed");
+                        return Err(error.into());
+                    }
+                },
                 Err(error) => {
                     println!("failed");
                     return Err(error.into());
@@ -548,10 +556,7 @@ fn main() -> Result<()> {
             }
             std::thread::sleep(delay);
             if let Err(error) = d.factory_reset() {
-                let ignore_error = if let r4dcb08_lib::tokio_error::Error::ModbusError(
-                    tokio_modbus::Error::Transport(error),
-                ) = &error
-                {
+                let ignore_error = if let tokio_modbus::Error::Transport(error) = &error {
                     if error.kind() == std::io::ErrorKind::TimedOut {
                         // After the a successful factory reset we get no response :-(
                         debug!("Reset to factory settings returned TimeOut error, can be ignored");

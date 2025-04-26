@@ -150,7 +150,8 @@ impl Address {
     ///
     /// An `Address` struct containing the decoded value.
     pub fn decode_from_holding_registers(words: &[Word]) -> Self {
-        Self(*words.first().unwrap() as u8)
+        Self::try_from(*words.first().unwrap() as u8)
+            .expect("Invalid address value read from device register")
     }
 
     /// Encodes an `Address` into a `Word` value for writing to a register.

@@ -786,7 +786,7 @@ impl AutomaticReport {
             "Invalid data in interval register: upper byte is non-zero (value: {word_value:#06X})"
         );
 
-        // not  use Self::try_from() - convertion cannot fail
+        // not  use Self::try_from() - conversion cannot fail
         Self::from(word_value as u8)
     }
 

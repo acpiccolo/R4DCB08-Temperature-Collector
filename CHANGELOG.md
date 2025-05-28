@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+## [v0.2.0](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/b7fd111cca59ccbc2bfb0b2197a6855c4af2a15a..v0.2.0) - 2025-05-28
+#### Build system
+- create release-plz.yml - ([4b0dc9d](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/commit/4b0dc9d3d5696c35a9826e68090c72912f740f39)) - acpiccolo
+#### Miscellaneous Chores
+- **(deps)** bump crate-ci/typos from 1.31.1 to 1.32.0 (#46) - ([b7fd111](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/commit/b7fd111cca59ccbc2bfb0b2197a6855c4af2a15a)) - dependabot[bot]
+- fix typo - ([2d71dae](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/commit/2d71daed738ff7a7d6ac23d5701044afef68763d)) - acpiccolo
+- improved protocol - ([c0abda3](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/commit/c0abda3770dfda2e29ecaaa23ce8f93cba933189)) - acpiccolo
+
+- - -
+
 ## [v0.1.1](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/fa3fe37de957f422b54547abaf678a4f9984ea11..v0.1.1) - 2025-04-29
 #### Bug Fixes
 - fixed wrong protocol sizes - ([9050b06](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/commit/9050b06b2f4fd1be2591839efb6b06eafc45d448)) - acpiccolo

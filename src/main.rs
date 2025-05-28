@@ -390,9 +390,7 @@ fn rtu_scan(
             tokio_modbus::Slave(*proto::Address::BROADCAST),
         )
         .with_context(|| {
-            format!(
-                "Cannot open serial port {device_name} for scanning at baud {baud_rate}"
-            )
+            format!("Cannot open serial port {device_name} for scanning at baud {baud_rate}")
         })?,
     );
     client.set_timeout(timeout);
@@ -546,9 +544,7 @@ fn main() -> Result<()> {
             poll_interval,
             mode,
         } => {
-            info!(
-                "Starting daemon mode with polling interval: {poll_interval:?}"
-            );
+            info!("Starting daemon mode with polling interval: {poll_interval:?}");
             match mode {
                 DaemonMode::Stdout => loop {
                     debug!("Daemon: Reading temperatures for stdout...");
@@ -677,15 +673,11 @@ fn main() -> Result<()> {
             println!("RS485 address: {address}");
         }
         CliCommands::SetCorrection { channel, value } => {
-            info!(
-                "Executing: Set Temperature Correction for Channel {channel} to {value} °C"
-            );
+            info!("Executing: Set Temperature Correction for Channel {channel} to {value} °C");
             client
                 .set_temperature_correction(*channel, *value)
                 .with_context(|| {
-                    format!(
-                        "Failed to set temperature correction for channel {channel} to {value}"
-                    )
+                    format!("Failed to set temperature correction for channel {channel} to {value}")
                 })??;
             println!(
                 "Temperature correction for channel {channel} set to {value} °C successfully."

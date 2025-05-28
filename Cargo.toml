@@ -56,3 +56,7 @@ paho-mqtt = { version = "0.13", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
+assert_matches = "1"
+
+[package.metadata.cargo-machete]
+ignored = ["tokio"]

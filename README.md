@@ -18,11 +18,11 @@ This Rust project enables communication with an **R4DCB08 temperature collector*
 
 ## Hardware Requirements
 To use this tool, you need:
-- One or more **R4DCB08 temperature collectors**.
-- Up to **8 DS18B20** temperature sensors.
-- A **USB-RS485 converter** (for RTU mode).
+- One or more **R4DCB08 Temperature Collectors**.
+- Up to **8 DS18B20** Temperature Sensors.
+- A **USB-to-RS485 converter** (for RTU mode).
 
-![R4DCB08 temperature collector](/images/r4dcb08.png)
+![R4DCB08 Temperature Collector](/images/r4dcb08.png)
 
 ## Technical Specifications R4DCB08
 | Feature | Details |

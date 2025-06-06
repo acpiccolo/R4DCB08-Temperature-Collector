@@ -97,7 +97,7 @@ If the `--mqtt-config` option is omitted, the application will automatically loo
 
 ### MQTT Configuration File
 
-As of version 0.2.0, all MQTT connection parameters are configured exclusively through a YAML file. This approach centralizes settings like the broker URL, credentials, topic, QoS, and client ID.
+All MQTT connection parameters are configured exclusively through a YAML file. This approach centralizes settings like the broker URL, credentials, topic, QoS, and client ID.
 
 **Path Specification:**
 - Use the `--mqtt-config <PATH>` option to specify the path to your MQTT configuration file. For example:
@@ -138,7 +138,7 @@ url: "tcp://localhost:1883"
 
 # Base MQTT topic to publish temperature readings to.
 # Readings for each channel will be published to "{topic}/CH{channel_index}".
-# Example: "r4dcb08/0", "r4dcb08/1", etc.
+# Example: "r4dcb08/CH0", "r4dcb08/CH1", etc.
 # Defaults to "r4dcb08".
 topic: "r4dcb08/house/temperature"
 

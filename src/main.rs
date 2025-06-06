@@ -23,12 +23,18 @@ use dialoguer::Confirm;
 use flexi_logger::{Logger, LoggerHandle};
 use log::*;
 use paho_mqtt as mqtt;
-use serde::Deserialize;
 use r4dcb08_lib::{protocol as proto, tokio_sync_client::R4DCB08};
+use serde::Deserialize;
 use std::fs::File;
 use std::io::{Read, Write, stdout};
 use std::{panic, time::Duration};
-use serde_yaml;
+
+const MQTT_CONFIG_FILE: &str = "mqtt.yaml";
+const MQTT_TOPIC_DEFAULT: &str = "r4dcb08";
+const MQTT_OPERATION_TIMEOUT: Duration = Duration::from_secs(10);
+const MQTT_KEEP_ALIVE_INTERVAL: Duration = Duration::from_secs(30);
+const MQTT_AUTO_RECONNECT_INTERVAL_MIN: Duration = Duration::from_secs(1);
+const MQTT_AUTO_RECONNECT_INTERVAL_MAX: Duration = Duration::from_secs(300);
 
 fn default_device_name() -> String {
     if cfg!(target_os = "windows") {
@@ -130,7 +136,7 @@ struct MqttConfigFile {
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq)]
-enum DaemonMode {
+enum DaemonOutput {
     /// Continuously read temperatures and print them to the standard output (console).
     Stdout,
     /// Continuously read temperatures and publish them to an MQTT broker.
@@ -148,14 +154,13 @@ enum CliCommands {
     /// Output can be directed to stdout or an MQTT broker.
     #[clap(verbatim_doc_comment)]
     Daemon {
-        /// The interval at which to poll for temperature readings.
-        /// Examples: "2s", "500ms", "1min".
-        #[arg(value_parser = humantime::parse_duration, short, long, default_value = "2s", verbatim_doc_comment)]
-        poll_interval: Duration,
-
-        /// Specifies the output mode for daemon operation.
+        /// Specifies the output.
         #[command(subcommand)]
-        mode: DaemonMode,
+        output: DaemonOutput,
+
+        /// Interval for fetching temperatures (e.g., "10s", "1m")
+        #[arg(value_parser = humantime::parse_duration, short, long, default_value = "2s", verbatim_doc_comment)]
+        interval: Duration,
     },
 
     /// Read and display the current temperatures from all sensor channels.
@@ -535,70 +540,64 @@ fn main() -> Result<()> {
 
     match command_to_execute {
         CliCommands::Daemon {
-            poll_interval,
-            mode,
+            interval,
+            output: mode,
         } => {
-            info!("Starting daemon mode with polling interval: {poll_interval:?}");
+            info!("Starting daemon mode: output={mode:?}, interval={interval:?}");
             match mode {
-                DaemonMode::Stdout => loop {
+                DaemonOutput::Stdout => loop {
                     debug!("Daemon: Reading temperatures for stdout...");
                     print_temperature!(&mut client);
-                    std::thread::sleep(effective_delay.max(*poll_interval));
+                    std::thread::sleep(effective_delay.max(*interval));
                 },
-                DaemonMode::Mqtt { mqtt_config_path } => {
-                    let config_path_str =
-                        mqtt_config_path.unwrap_or_else(|| "mqtt.yaml".to_string());
+                DaemonOutput::Mqtt { mqtt_config_path } => {
+                    let config_path_str = mqtt_config_path
+                        .clone()
+                        .unwrap_or_else(|| MQTT_CONFIG_FILE.to_string());
 
-                    info!("Loading MQTT configuration from {}...", config_path_str);
+                    info!("Loading MQTT configuration from {config_path_str}...");
 
                     let contents = match File::open(&config_path_str) {
                         Ok(mut file) => {
                             let mut s = String::new();
                             file.read_to_string(&mut s).with_context(|| {
-                                format!("Failed to read MQTT config file at '{}'", config_path_str)
+                                format!("Failed to read MQTT config file at '{config_path_str}'")
                             })?;
                             s
                         }
                         Err(e) => {
                             // Provide a specific error message if the default file is not found
-                            if config_path_str == "mqtt.yaml" && e.kind() == std::io::ErrorKind::NotFound {
-                                bail!("Default MQTT config file 'mqtt.yaml' not found in the current directory. Please provide a path using --mqtt-config-path or create 'mqtt.yaml'.");
+                            if config_path_str == MQTT_CONFIG_FILE
+                                && e.kind() == std::io::ErrorKind::NotFound
+                            {
+                                bail!(
+                                    "Default MQTT config file '{MQTT_CONFIG_FILE}' not found in the current directory. Please provide a path using --mqtt-config-path or create '{MQTT_CONFIG_FILE}'."
+                                );
                             }
                             return Err(e).with_context(|| {
-                                format!("Failed to open MQTT config file at '{}'", config_path_str)
+                                format!("Failed to open MQTT config file at '{config_path_str}'")
                             });
                         }
                     };
 
-                    let loaded_config: MqttConfigFile =
-                        serde_yaml::from_str(&contents).with_context(|| {
-                            format!(
-                                "Failed to parse MQTT config file at '{}'",
-                                config_path_str
-                            )
+                    let loaded_config: MqttConfigFile = serde_yaml::from_str(&contents)
+                        .with_context(|| {
+                            format!("Failed to parse MQTT config file at '{config_path_str}'")
                         })?;
 
-                    // The URL will be made non-optional in MqttConfigFile in a subsequent step.
-                    // For now, if it's None, this will panic, which is acceptable temporarily.
-                    // This unwrap will be removed once MqttConfigFile.url is no longer Option<String>.
-                    let final_url = loaded_config.url.clone().with_context(|| {
-                        format!(
-                            "MQTT URL not found in config file '{}'. It is a required field.",
-                            config_path_str
-                        )
-                    })?;
+                    let final_url = loaded_config.url.clone();
                     let final_username = loaded_config.username.clone();
                     let final_password = loaded_config.password.clone();
                     let final_topic = loaded_config
                         .topic
                         .clone()
-                        .unwrap_or_else(|| "r4dcb08".to_string());
+                        .unwrap_or_else(|| MQTT_TOPIC_DEFAULT.to_string());
                     let final_qos = loaded_config.qos.unwrap_or(0);
                     let final_client_id = loaded_config.client_id.clone();
 
-                    info!("Daemon: Configuring MQTT client for broker at {}", final_url);
-                    let mut create_opts_builder = mqtt::CreateOptionsBuilder::new()
-                        .server_uri(&final_url);
+                    info!("Daemon: Configuring MQTT client for broker at {final_url}");
+                    let mut create_opts_builder =
+                        mqtt::CreateOptionsBuilder::new().server_uri(&final_url);
 
                     if let Some(client_id_str) = &final_client_id {
                         create_opts_builder = create_opts_builder.client_id(client_id_str.as_str());
@@ -608,21 +607,24 @@ fn main() -> Result<()> {
                     let create_opts = create_opts_builder.finalize();
 
                     let mut mqtt_client = mqtt::Client::new(create_opts).with_context(|| {
-                        format!("Error creating MQTT client for URL: {}", final_url)
+                        format!("Error creating MQTT client for URL: {final_url}")
                     })?;
 
-                    mqtt_client.set_timeout(Duration::from_secs(10)); // MQTT operation timeout
+                    mqtt_client.set_timeout(MQTT_OPERATION_TIMEOUT);
 
                     let mut conn_builder = mqtt::ConnectOptionsBuilder::new();
                     conn_builder
-                        .keep_alive_interval(Duration::from_secs(30))
+                        .keep_alive_interval(MQTT_KEEP_ALIVE_INTERVAL)
                         .clean_session(true) // Typically true for telemetry publishers
-                        .automatic_reconnect(Duration::from_secs(1), Duration::from_secs(300)); // Enable auto-reconnect
+                        .automatic_reconnect(
+                            MQTT_AUTO_RECONNECT_INTERVAL_MIN,
+                            MQTT_AUTO_RECONNECT_INTERVAL_MAX,
+                        ); // Enable auto-reconnect
 
-                    if let Some(user_name_str) = &final_username { // Borrow final_username
+                    if let Some(user_name_str) = &final_username {
                         conn_builder.user_name(user_name_str.as_str());
                     }
-                    if let Some(password_str) = &final_password { // Borrow final_password
+                    if let Some(password_str) = &final_password {
                         conn_builder.password(password_str.as_str());
                     }
                     let conn_opts = conn_builder.finalize();
@@ -636,20 +638,19 @@ fn main() -> Result<()> {
                     loop {
                         debug!("Daemon: Reading temperatures for MQTT publishing...");
                         match client.read_temperatures() {
-                            Ok(temperatures) => {
+                            Ok(Ok(temperatures)) => {
                                 trace!("Temperatures read: {temperatures:?}");
                                 for (ch_idx, temp_val) in temperatures.iter().enumerate() {
-                                    let channel_topic = format!("{}/CH{ch_idx}", final_topic); // Use final_topic
-                                    let payload_str = temp_val.to_string(); // Uses Display impl (e.g., "21.9" or "NAN")
+                                    let channel_topic = format!("{final_topic}/CH{ch_idx}");
+                                    let payload_str = temp_val.to_string();
 
                                     debug!(
-                                        "Publishing to MQTT: Topic='{}', Payload='{}', QoS={}",
-                                        channel_topic, payload_str, final_qos // Use final_qos
+                                        "Publishing to MQTT: Topic='{channel_topic}', Payload='{payload_str}', QoS={final_qos}",
                                     );
                                     let msg = mqtt::Message::new_retained(
                                         channel_topic.clone(),
                                         payload_str.clone(),
-                                        final_qos, // Use final_qos
+                                        final_qos,
                                     );
 
                                     if let Err(e) = mqtt_client.publish(msg) {
@@ -675,12 +676,14 @@ fn main() -> Result<()> {
                                     }
                                 }
                             }
+                            Ok(Err(e)) => {
+                                error!("Daemon: Error reading temperatures: {e}");
+                            }
                             Err(e) => {
                                 error!("Daemon: Error reading temperatures: {e}");
-                                // Decide on retry strategy or if to bail
                             }
                         }
-                        std::thread::sleep(effective_delay.max(*poll_interval));
+                        std::thread::sleep(effective_delay.max(*interval));
                     }
                 }
             }

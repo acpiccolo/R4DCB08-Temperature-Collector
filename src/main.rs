@@ -539,12 +539,9 @@ fn main() -> Result<()> {
     client.set_timeout(args.timeout);
 
     match command_to_execute {
-        CliCommands::Daemon {
-            interval,
-            output: mode,
-        } => {
-            info!("Starting daemon mode: output={mode:?}, interval={interval:?}");
-            match mode {
+        CliCommands::Daemon { interval, output } => {
+            info!("Starting daemon mode: output={output:?}, interval={interval:?}");
+            match output {
                 DaemonOutput::Stdout => loop {
                     debug!("Daemon: Reading temperatures for stdout...");
                     print_temperature!(&mut client);

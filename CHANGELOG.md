@@ -2,6 +2,16 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 - - -
+
+## [0.2.1](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.2.0...v0.2.1) - 2025-06-24
+
+### Other
+
+- rename variable
+- *(deps)* update flexi_logger requirement from 0.30 to 0.31
+- *(deps)* bump crate-ci/typos from 1.32.0 to 1.33.1
+- Refactor mqtt config cli defaults ([#47](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/pull/47))
+
 ## [v0.2.0](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/b7fd111cca59ccbc2bfb0b2197a6855c4af2a15a..v0.2.0) - 2025-05-28
 #### Build system
 - create release-plz.yml - ([4b0dc9d](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/commit/4b0dc9d3d5696c35a9826e68090c72912f740f39)) - acpiccolo

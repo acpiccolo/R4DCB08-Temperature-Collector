@@ -3,6 +3,12 @@ All notable changes to this project will be documented in this file. See [conven
 
 - - -
 
+## [0.2.2](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.2.1...v0.2.2) - 2025-07-07
+
+### Other
+
+- *(deps)* bump crate-ci/typos from 1.33.1 to 1.34.0
+
 ## [0.2.1](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.2.0...v0.2.1) - 2025-06-24
 
 ### Other

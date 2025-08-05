@@ -31,6 +31,8 @@ bin-dependencies = [
     "tokio-tcp-sync",
     "clap/derive",
     "serde",
+    "dep:rand",
+    "dep:humantime-serde",
 ]
 tokio-rtu-sync = ["tokio-modbus/rtu-sync", "dep:tokio-serial"]
 tokio-rtu = ["tokio-modbus/rtu", "dep:tokio-serial"]
@@ -55,6 +57,8 @@ flexi_logger = { version = "0.31", optional = true }
 dialoguer = { version = "0.11", optional = true }
 humantime = { version = "2", optional = true }
 paho-mqtt = { version = "0.13", optional = true }
+rand = { version = "0.9", optional = true }
+humantime-serde = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }

@@ -109,12 +109,12 @@ All MQTT connection parameters are configured exclusively through a YAML file. T
 If the specified configuration file (either via option or the default `mqtt.yaml`) is not found, cannot be read, or is improperly formatted, the program will exit with an error.
 
 **Mandatory Fields:**
-- The `url` field within the MQTT configuration YAML file is **mandatory**.
+- The `uri` field within the MQTT configuration YAML file is **mandatory**.
 
 **Configuration Details:**
 
 The YAML file allows you to set the following parameters:
-- `url` (String, Mandatory): URL of the MQTT broker (e.g., "tcp://localhost:1883").
+- `uri` (String, Mandatory): URI of the MQTT broker (e.g., "tcp://localhost:1883").
 - `username` (String, Optional): Username for MQTT broker authentication.
 - `password` (String, Optional): Password for MQTT broker authentication.
 - `topic` (String, Optional): Base MQTT topic. Defaults to "r4dcb08" if not set.
@@ -126,9 +126,9 @@ The YAML file allows you to set the following parameters:
 ```yaml
 # Sample MQTT Configuration for R4DCB08 Temperature Collector CLI
 
-# URL of the MQTT broker (Mandatory).
+# URI of the MQTT broker (Mandatory).
 # Example: "tcp://localhost:1883" or "mqtts://secure-broker.com:8883"
-url: "tcp://localhost:1883"
+uri: "tcp://localhost:1883"
 
 # Username for MQTT broker authentication (optional).
 # username: "your_username"

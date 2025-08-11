@@ -121,6 +121,23 @@ impl R4DCB08 {
         self.ctx.timeout()
     }
 
+    /// Helper function to read holding registers and decode them into a specific type.
+    fn read_and_decode<T, F>(
+        &mut self,
+        address: u16,
+        quantity: u16,
+        decoder: F,
+    ) -> tokio_modbus::Result<T>
+    where
+        F: FnOnce(&[u16]) -> T,
+    {
+        match self.ctx.read_holding_registers(address, quantity) {
+            Ok(Ok(words)) => Ok(Ok(decoder(&words))),
+            Ok(Err(err)) => Ok(Err(err)),
+            Err(err) => Err(err),
+        }
+    }
+
     /// Reads the current temperatures from all 8 available channels in degrees Celsius (°C).
     ///
     /// If a channel's sensor is not connected or reports an error, the corresponding
@@ -158,27 +175,11 @@ impl R4DCB08 {
     /// # }
     /// ```
     pub fn read_temperatures(&mut self) -> tokio_modbus::Result<proto::Temperatures> {
-        match self
-            .ctx
-            .read_holding_registers(proto::Temperatures::ADDRESS, proto::Temperatures::QUANTITY)
-        {
-            Ok(Ok(words)) => {
-                // Modbus read successful, now decode
-                // The protocol's decode_from_holding_registers expects the correct number of words
-                // and will panic if the slice length is wrong or if individual word decoding panics.
-                Ok(Ok(proto::Temperatures::decode_from_holding_registers(
-                    &words,
-                )))
-            }
-            Ok(Err(err)) => {
-                // Modbus read returned an error/exception within the Ok variant
-                Ok(Err(err))
-            }
-            Err(err) => {
-                // Underlying communication error (e.g., IO error, timeout)
-                Err(err)
-            }
-        }
+        self.read_and_decode(
+            proto::Temperatures::ADDRESS,
+            proto::Temperatures::QUANTITY,
+            proto::Temperatures::decode_from_holding_registers,
+        )
     }
 
     /// Reads the configured temperature correction values (°C) for all 8 channels.
@@ -214,27 +215,11 @@ impl R4DCB08 {
     pub fn read_temperature_correction(
         &mut self,
     ) -> tokio_modbus::Result<proto::TemperatureCorrection> {
-        match self.ctx.read_holding_registers(
+        self.read_and_decode(
             proto::TemperatureCorrection::ADDRESS,
             proto::TemperatureCorrection::QUANTITY,
-        ) {
-            Ok(Ok(words)) => {
-                // Modbus read successful, now decode
-                // The protocol's decode_from_holding_registers expects the correct number of words
-                // and will panic if the slice length is wrong or if individual word decoding panics.
-                Ok(Ok(
-                    proto::TemperatureCorrection::decode_from_holding_registers(&words),
-                ))
-            }
-            Ok(Err(err)) => {
-                // Modbus read returned an error/exception within the Ok variant
-                Ok(Err(err))
-            }
-            Err(err) => {
-                // Underlying communication error (e.g., IO error, timeout)
-                Err(err)
-            }
-        }
+            proto::TemperatureCorrection::decode_from_holding_registers,
+        )
     }
 
     /// Sets a temperature correction value for a specific channel.
@@ -331,27 +316,11 @@ impl R4DCB08 {
     /// # }
     /// ```
     pub fn read_automatic_report(&mut self) -> tokio_modbus::Result<proto::AutomaticReport> {
-        match self.ctx.read_holding_registers(
+        self.read_and_decode(
             proto::AutomaticReport::ADDRESS,
             proto::AutomaticReport::QUANTITY,
-        ) {
-            Ok(Ok(words)) => {
-                // Modbus read successful, now decode
-                // The protocol's decode_from_holding_registers expects the correct number of words
-                // and will panic if the slice length is wrong or if individual word decoding panics.
-                Ok(Ok(proto::AutomaticReport::decode_from_holding_registers(
-                    &words,
-                )))
-            }
-            Ok(Err(err)) => {
-                // Modbus read returned an error/exception within the Ok variant
-                Ok(Err(err))
-            }
-            Err(err) => {
-                // Underlying communication error (e.g., IO error, timeout)
-                Err(err)
-            }
-        }
+            proto::AutomaticReport::decode_from_holding_registers,
+        )
     }
 
     /// Sets the automatic temperature reporting interval.
@@ -431,25 +400,11 @@ impl R4DCB08 {
     /// # }
     /// ```
     pub fn read_baud_rate(&mut self) -> tokio_modbus::Result<proto::BaudRate> {
-        match self
-            .ctx
-            .read_holding_registers(proto::BaudRate::ADDRESS, proto::BaudRate::QUANTITY)
-        {
-            Ok(Ok(words)) => {
-                // Modbus read successful, now decode
-                // The protocol's decode_from_holding_registers expects the correct number of words
-                // and will panic if the slice length is wrong or if individual word decoding panics.
-                Ok(Ok(proto::BaudRate::decode_from_holding_registers(&words)))
-            }
-            Ok(Err(err)) => {
-                // Modbus read returned an error/exception within the Ok variant
-                Ok(Err(err))
-            }
-            Err(err) => {
-                // Underlying communication error (e.g., IO error, timeout)
-                Err(err)
-            }
-        }
+        self.read_and_decode(
+            proto::BaudRate::ADDRESS,
+            proto::BaudRate::QUANTITY,
+            proto::BaudRate::decode_from_holding_registers,
+        )
     }
 
     /// Sets the Modbus communication baud rate for the device.
@@ -599,26 +554,11 @@ impl R4DCB08 {
     /// # }
     /// ```
     pub fn read_address(&mut self) -> tokio_modbus::Result<proto::Address> {
-        match self
-            .ctx
-            .read_holding_registers(proto::Address::ADDRESS, proto::Address::QUANTITY)
-        {
-            Ok(Ok(words)) => {
-                // Modbus read successful, now decode
-                // The protocol's decode_from_holding_registers expects the correct number of words
-                // and will panic if the slice length is wrong or if individual word decoding panics
-                // or if value is invalid (e.g. 0 or > 247).
-                Ok(Ok(proto::Address::decode_from_holding_registers(&words)))
-            }
-            Ok(Err(err)) => {
-                // Modbus read returned an error/exception within the Ok variant
-                Ok(Err(err))
-            }
-            Err(err) => {
-                // Underlying communication error (e.g., IO error, timeout)
-                Err(err)
-            }
-        }
+        self.read_and_decode(
+            proto::Address::ADDRESS,
+            proto::Address::QUANTITY,
+            proto::Address::decode_from_holding_registers,
+        )
     }
 
     /// Sets a new Modbus device address.

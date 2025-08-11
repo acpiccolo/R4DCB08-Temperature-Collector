@@ -168,67 +168,63 @@ fn confirm_only_one_module_connected() -> Result<bool> {
         .context("Failed to get user confirmation.")
 }
 
-fn main() -> Result<()> {
-    let args = commandline::CliArgs::parse();
+/// Handles the RTU scan command.
+///
+/// This function iterates through all supported baud rates and attempts to find a device.
+fn handle_rtu_scan(
+    device: &str,
+    delay: Duration,
+    timeout: Duration,
+    log_level: LevelFilter,
+) -> Result<()> {
+    if !confirm_only_one_module_connected()? {
+        info!("RTU scan aborted by user.");
+        return Ok(());
+    }
+    info!("Starting RTU scan on device: {device}");
+    let baud_rates_to_scan = [
+        proto::BaudRate::B19200, // Start with common/faster rates
+        proto::BaudRate::B9600,
+        proto::BaudRate::B4800,
+        proto::BaudRate::B2400,
+        proto::BaudRate::B1200,
+    ];
 
-    // Initialize logging as early as possible
-    let _log_handle = logging_init(args.verbose.log_level_filter());
-    info!(
-        "R4DCB08 CLI started. Log level: {}",
-        args.verbose.log_level_filter()
-    );
+    for baud_rate in baud_rates_to_scan {
+        print!("Scanning at {baud_rate} baud on {device} ... ");
+        stdout().flush().context("Failed to flush stdout")?;
 
-    // Handle RTU Scan separately as it has a different workflow
-    if let commandline::CliConnection::RtuScan { device } = &args.connection {
-        if !confirm_only_one_module_connected()? {
-            info!("RTU scan aborted by user.");
-            return Ok(());
-        }
-        info!("Starting RTU scan on device: {device}");
-        let baud_rates_to_scan = [
-            proto::BaudRate::B19200, // Start with common/faster rates
-            proto::BaudRate::B9600,
-            proto::BaudRate::B4800,
-            proto::BaudRate::B2400,
-            proto::BaudRate::B1200,
-        ];
+        let scan_attempt_delay = check_rtu_delay(delay, &baud_rate);
 
-        for baud_rate in baud_rates_to_scan {
-            print!("Scanning at {baud_rate} baud on {device} ... ");
-            stdout().flush().context("Failed to flush stdout")?;
-
-            let scan_attempt_delay = check_rtu_delay(args.delay, &baud_rate);
-
-            match rtu_scan(device, &baud_rate, args.timeout) {
-                Ok(address) => {
-                    println!("SUCCESS!");
-                    println!("  Device found with RS485 Address: {address}");
-                    println!("  Communication established at Baud rate: {baud_rate}");
-                    return Ok(()); // Exit after first successful find
+        match rtu_scan(device, &baud_rate, timeout) {
+            Ok(address) => {
+                println!("SUCCESS!");
+                println!("  Device found with RS485 Address: {address}");
+                println!("  Communication established at Baud rate: {baud_rate}");
+                return Ok(()); // Exit after first successful find
+            }
+            Err(error) => {
+                println!("failed.");
+                // Log the detailed error only at trace or debug level for scan failures
+                if log_level >= LevelFilter::Debug {
+                    debug!("Scan error at {baud_rate} baud: {error:?}");
+                } else {
+                    trace!("Scan error at {baud_rate} baud: {error:?}"); // Keep for trace if needed
                 }
-                Err(error) => {
-                    println!("failed.");
-                    // Log the detailed error only at trace or debug level for scan failures
-                    if args.verbose.log_level_filter() >= LevelFilter::Debug {
-                        debug!("Scan error at {baud_rate} baud: {error:?}");
-                    } else {
-                        trace!("Scan error at {baud_rate} baud: {error:?}"); // Keep for trace if needed
-                    }
-                    std::thread::sleep(scan_attempt_delay); // Wait before trying next baud rate
-                }
+                std::thread::sleep(scan_attempt_delay); // Wait before trying next baud rate
             }
         }
-        // If loop completes, no device was found
-        bail!(
-            "No R4DCB08 device found on {} across all supported baud rates.",
-            device
-        );
     }
+    // If loop completes, no device was found
+    bail!("No R4DCB08 device found on {device} across all supported baud rates.");
+}
 
-    // --- Setup for regular TCP/RTU commands ---
-    let mut delay = args.delay;
-
-    let (mut client, command_to_execute) = match &args.connection {
+/// Creates a new R4DCB08 client based on the provided command-line arguments.
+fn create_client<'a>(
+    connection: &'a commandline::CliConnection,
+    delay: &mut Duration,
+) -> Result<(R4DCB08, &'a commandline::CliCommands)> {
+    let (client, command_to_execute) = match connection {
         commandline::CliConnection::Tcp {
             address: tcp_address_str,
             command,
@@ -252,13 +248,12 @@ fn main() -> Result<()> {
             let final_device_address = if command == &commandline::CliCommands::QueryAddress {
                 if !confirm_only_one_module_connected()? {
                     info!("QueryAddress command aborted by user.");
-                    return Ok(());
+                    std::process::exit(0);
                 }
                 // For QueryAddress, always use the broadcast address.
                 if address != &proto::Address::BROADCAST {
                     info!(
-                        "Overriding specified address {} with broadcast address {} for QueryAddress command.",
-                        address,
+                        "Overriding specified address {address} with broadcast address {} for QueryAddress command.",
                         proto::Address::BROADCAST
                     );
                 }
@@ -270,7 +265,7 @@ fn main() -> Result<()> {
             info!(
                 "Attempting to connect via RTU to device {device} (Address: {final_device_address}, Baud: {baud_rate})..."
             );
-            delay = check_rtu_delay(delay, baud_rate);
+            *delay = check_rtu_delay(*delay, baud_rate);
             (
                 R4DCB08::new(tokio_modbus::client::sync::rtu::connect_slave(
                     &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate),
@@ -283,9 +278,110 @@ fn main() -> Result<()> {
             unreachable!("RtuScan should be handled earlier.")
         }
     };
+    Ok((client, command_to_execute))
+}
 
+/// Handles the factory reset command.
+///
+/// This function prompts the user for confirmation, verifies the connection to the device,
+/// and then sends the factory reset command.
+fn handle_factory_reset(client: &mut R4DCB08, delay: Duration) -> Result<()> {
+    info!("Executing: Factory Reset");
+    println!(
+        "WARNING: This will reset the R4DCB08 module to its factory default settings:\n\
+         - Modbus Address: {}\n\
+         - Baud Rate: {}\n\
+         - Temperature Corrections: All channels set to 0.0 °C\n\
+         - Automatic Report Interval: Disabled (0 seconds)\n",
+        proto::Address::default(),
+        proto::BaudRate::default()
+    );
+    println!(
+        "After this operation, the device may become unresponsive on the current settings.\n\
+         A POWER CYCLE (disconnect and reconnect power) IS REQUIRED to complete the reset."
+    );
+
+    if !Confirm::new()
+        .with_prompt("Are you sure you want to proceed with the factory reset?")
+        .default(false)
+        .show_default(true)
+        .interact()?
+    {
+        info!("Factory reset aborted by user.");
+        return Ok(());
+    }
+
+    // Try a quick read to confirm current connectivity before reset.
+    print!("Verifying current connection to device before reset... ");
+    stdout().flush().context("Failed to flush stdout")?;
+
+    match client.read_temperatures() {
+        Ok(Ok(_)) => {
+            println!("connection OK.");
+        }
+        Ok(Err(err)) => {
+            println!("failed");
+            return Err(err.into());
+        }
+        Err(err) => {
+            println!("failed");
+            return Err(err.into());
+        }
+    }
+
+    std::thread::sleep(delay);
+
+    info!("Sending factory reset command...");
+    if let Err(error) = client.factory_reset() {
+        let ignore_error = if let tokio_modbus::Error::Transport(error) = &error {
+            if error.kind() == std::io::ErrorKind::TimedOut {
+                // After the a successful factory reset we get no response :-(
+                debug!("Reset to factory settings returned TimeOut error, can be ignored");
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !ignore_error {
+            return Err(error.into());
+        }
+    }
+    println!("Factory reset command sent successfully.");
+    println!(
+        "IMPORTANT: Please disconnect and reconnect power to the R4DCB08 module to complete the reset process."
+    );
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let args = commandline::CliArgs::parse();
+
+    // 1. Initialize logging as early as possible
+    let _log_handle = logging_init(args.verbose.log_level_filter());
+    info!(
+        "R4DCB08 CLI started. Log level: {}",
+        args.verbose.log_level_filter()
+    );
+
+    // 2. Handle RTU Scan command separately as it has a different workflow
+    if let commandline::CliConnection::RtuScan { device } = &args.connection {
+        return handle_rtu_scan(
+            device,
+            args.delay,
+            args.timeout,
+            args.verbose.log_level_filter(),
+        );
+    }
+
+    // 3. Setup for regular TCP/RTU commands
+    let mut delay = args.delay;
+    let (mut client, command_to_execute) = create_client(&args.connection, &mut delay)?;
     client.set_timeout(args.timeout);
 
+    // 4. Execute the command
     match command_to_execute {
         commandline::CliCommands::Daemon {
             poll_interval,
@@ -390,73 +486,7 @@ fn main() -> Result<()> {
             }
         }
         commandline::CliCommands::FactoryReset => {
-            info!("Executing: Factory Reset");
-            println!(
-                "WARNING: This will reset the R4DCB08 module to its factory default settings:\n\
-                 - Modbus Address: {}\n\
-                 - Baud Rate: {}\n\
-                 - Temperature Corrections: All channels set to 0.0 °C\n\
-                 - Automatic Report Interval: Disabled (0 seconds)\n",
-                proto::Address::default(),
-                proto::BaudRate::default()
-            );
-            println!(
-                "After this operation, the device may become unresponsive on the current settings.\n\
-                 A POWER CYCLE (disconnect and reconnect power) IS REQUIRED to complete the reset."
-            );
-
-            if !Confirm::new()
-                .with_prompt("Are you sure you want to proceed with the factory reset?")
-                .default(false)
-                .show_default(true)
-                .interact()?
-            {
-                info!("Factory reset aborted by user.");
-                return Ok(());
-            }
-
-            // Try a quick read to confirm current connectivity before reset.
-            print!("Verifying current connection to device before reset... ");
-            stdout().flush().context("Failed to flush stdout")?;
-
-            match client.read_temperatures() {
-                Ok(Ok(_)) => {
-                    println!("connection OK.");
-                }
-                Ok(Err(err)) => {
-                    println!("failed");
-                    return Err(err.into());
-                }
-                Err(err) => {
-                    println!("failed");
-                    return Err(err.into());
-                }
-            }
-
-            std::thread::sleep(delay);
-
-            info!("Sending factory reset command...");
-            if let Err(error) = client.factory_reset() {
-                let ignore_error = if let tokio_modbus::Error::Transport(error) = &error {
-                    if error.kind() == std::io::ErrorKind::TimedOut {
-                        // After the a successful factory reset we get no response :-(
-                        debug!("Reset to factory settings returned TimeOut error, can be ignored");
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if !ignore_error {
-                    return Err(error.into());
-                }
-            }
-            println!("Factory reset command sent successfully.");
-            println!(
-                "IMPORTANT: Please disconnect and reconnect power to the R4DCB08 module to complete the reset process."
-            );
+            handle_factory_reset(&mut client, delay)?;
         }
     }
 

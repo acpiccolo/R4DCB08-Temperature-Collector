@@ -142,7 +142,7 @@ pub fn run_daemon(
     loop {
         log::debug!("Daemon: Reading temperatures for MQTT publishing...");
         match d.read_temperatures() {
-            Ok(Ok(temperatures)) => {
+            Ok(temperatures) => {
                 log::trace!("Temperatures read: {temperatures:?}");
                 for (ch_idx, temp_val) in temperatures.iter().enumerate() {
                     let channel_topic = format!("{}/CH{ch_idx}", config.topic);
@@ -162,9 +162,6 @@ pub fn run_daemon(
                         log::error!("Failed to publish MQTT message to {channel_topic}: {e}.");
                     }
                 }
-            }
-            Ok(Err(e)) => {
-                log::error!("Daemon: Error reading temperatures: {e}");
             }
             Err(e) => {
                 log::error!("Daemon: Error reading temperatures: {e}");

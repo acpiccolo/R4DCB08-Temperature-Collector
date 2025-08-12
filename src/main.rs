@@ -65,7 +65,7 @@ macro_rules! print_temperature {
     ($device:expr) => {
         let temperatures = $device
             .read_temperatures()
-            .with_context(|| "Cannot read temperatures")??;
+            .with_context(|| "Cannot read temperatures")?;
         println!("Temperatures (°C): {}", temperatures)
     };
 }
@@ -74,7 +74,7 @@ macro_rules! print_temperature_correction {
     ($device:expr) => {
         let corrections = $device
             .read_temperature_correction()
-            .with_context(|| "Cannot read temperature corrections")??;
+            .with_context(|| "Cannot read temperature corrections")?;
         println!("Temperature corrections (°C): {}", corrections);
     };
 }
@@ -82,7 +82,7 @@ macro_rules! print_baud_rate {
     ($device:expr) => {
         let baud_rate = $device
             .read_baud_rate()
-            .with_context(|| "Cannot read baud rate")??;
+            .with_context(|| "Cannot read baud rate")?;
         println!("Baud rate: {}", baud_rate);
     };
 }
@@ -90,7 +90,7 @@ macro_rules! print_automatic_report {
     ($device:expr) => {
         let rsp = $device
             .read_automatic_report()
-            .with_context(|| "Cannot read automatic report")??;
+            .with_context(|| "Cannot read automatic report")?;
         println!("Automatic report in seconds (0 means disabled): {}", *rsp);
     };
 }
@@ -148,9 +148,7 @@ fn rtu_scan(
     );
     client.set_timeout(timeout);
 
-    Ok(client
-        .read_address()
-        .with_context(|| "Cannot read address")??)
+    client.read_address().with_context(|| "Cannot read address")
 }
 
 /// Prompts the user for confirmation when an operation requires only one module on the bus.
@@ -316,12 +314,8 @@ fn handle_factory_reset(client: &mut R4DCB08, delay: Duration) -> Result<()> {
     stdout().flush().context("Failed to flush stdout")?;
 
     match client.read_temperatures() {
-        Ok(Ok(_)) => {
+        Ok(_) => {
             println!("connection OK.");
-        }
-        Ok(Err(err)) => {
-            println!("failed");
-            return Err(err.into());
         }
         Err(err) => {
             println!("failed");
@@ -333,7 +327,10 @@ fn handle_factory_reset(client: &mut R4DCB08, delay: Duration) -> Result<()> {
 
     info!("Sending factory reset command...");
     if let Err(error) = client.factory_reset() {
-        let ignore_error = if let tokio_modbus::Error::Transport(error) = &error {
+        let ignore_error = if let r4dcb08_lib::tokio_sync_client::Error::TokioError(
+            tokio_modbus::Error::Transport(error),
+        ) = &error
+        {
             if error.kind() == std::io::ErrorKind::TimedOut {
                 // After the a successful factory reset we get no response :-(
                 debug!("Reset to factory settings returned TimeOut error, can be ignored");
@@ -429,7 +426,7 @@ fn main() -> Result<()> {
             info!("Executing: Query Device Address (Broadcast)");
             let address = client
                 .read_address()
-                .with_context(|| "Cannot read RS485 address")??;
+                .with_context(|| "Cannot read RS485 address")?;
             println!("RS485 address: {address}");
         }
         commandline::CliCommands::SetCorrection { channel, value } => {
@@ -438,7 +435,7 @@ fn main() -> Result<()> {
                 .set_temperature_correction(*channel, *value)
                 .with_context(|| {
                     format!("Failed to set temperature correction for channel {channel} to {value}")
-                })??;
+                })?;
             println!(
                 "Temperature correction for channel {channel} set to {value} °C successfully."
             );
@@ -447,7 +444,7 @@ fn main() -> Result<()> {
             info!("Executing: Set Baud Rate to {new_baud_rate}");
             client
                 .set_baud_rate(*new_baud_rate)
-                .with_context(|| format!("Failed to set baud rate to {new_baud_rate}"))??;
+                .with_context(|| format!("Failed to set baud rate to {new_baud_rate}"))?;
             println!(
                 "Baud rate set to {new_baud_rate}. Important: Power cycle the device for this change to take effect!"
             );
@@ -458,7 +455,7 @@ fn main() -> Result<()> {
             info!("Executing: Set Device Address to {new_address}");
             client
                 .set_address(*new_address)
-                .with_context(|| format!("Failed to set new RS485 address to {new_address}"))??;
+                .with_context(|| format!("Failed to set new RS485 address to {new_address}"))?;
             println!(
                 "Device address successfully set to {new_address}. Subsequent communication must use this new address."
             );
@@ -468,14 +465,12 @@ fn main() -> Result<()> {
                 "Executing: Set Automatic Report Interval to {} seconds",
                 report_time.as_secs()
             );
-            client
-                .set_automatic_report(*report_time)
-                .with_context(|| {
-                    format!(
-                        "Failed to set automatic report interval to {}s",
-                        report_time.as_secs()
-                    )
-                })??;
+            client.set_automatic_report(*report_time).with_context(|| {
+                format!(
+                    "Failed to set automatic report interval to {}s",
+                    report_time.as_secs()
+                )
+            })?;
             if report_time.is_disabled() {
                 println!("Automatic temperature reporting disabled successfully.");
             } else {

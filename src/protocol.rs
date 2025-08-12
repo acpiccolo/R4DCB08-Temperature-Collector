@@ -8,6 +8,29 @@
 use std::time::Duration;
 use thiserror::Error;
 
+/// A comprehensive error type for all operations within the `protocol` module.
+///
+/// This enum consolidates errors that can occur during the decoding of Modbus
+/// register data, encoding of values for writing, or validation of parameters.
+#[derive(Error, Debug, PartialEq)]
+pub enum Error {
+    /// Error indicating that the data received from a Modbus read has an unexpected length.
+    #[error("Invalid data length: expected {expected}, got {got}")]
+    UnexpectedDataLength { expected: usize, got: usize },
+
+    /// Error for malformed data within a register, e.g., an unexpected non-zero upper byte.
+    #[error("Invalid data in register: {details}")]
+    InvalidData { details: String },
+
+    /// Error for an invalid value read from a register, e.g., an undefined baud rate code.
+    #[error("Invalid value code for {entity}: {code}")]
+    InvalidValueCode { entity: String, code: u16 },
+
+    /// Error for an attempt to encode a value that is not supported, e.g., a `NaN` temperature.
+    #[error("Cannot encode value: {reason}")]
+    EncodeError { reason: String },
+}
+
 /// Represents a single 16-bit value stored in a Modbus register.
 ///
 /// Modbus RTU typically operates on 16-bit registers.
@@ -41,17 +64,9 @@ impl<'de> serde::Deserialize<'de> for BaudRate {
         D: serde::Deserializer<'de>,
     {
         let value = u16::deserialize(deserializer)?;
-        BaudRate::try_from(value).map_err(serde::de::Error::custom)
+        BaudRate::try_from(value).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 }
-
-/// Error returned when attempting to create a `BaudRate` from an unsupported `u16` value.
-#[derive(Error, Debug, PartialEq, Eq)]
-#[error("Unsupported baud rate value: {0}. Must be 1200, 2400, 4800, 9600, or 19200.")]
-pub struct ErrorInvalidBaudRate(
-    /// The invalid baud rate value that caused the error.
-    pub u16,
-);
 
 impl BaudRate {
     /// Modbus register address for reading/writing the baud rate.
@@ -63,33 +78,36 @@ impl BaudRate {
     ///
     /// Reads the first word from the provided slice, which should contain the
     /// raw value read from the device's baud rate register (0x00FF).
-    /// Returns an error if the slice is empty or the value is not a defined baud rate code.
     ///
     /// # Arguments
     ///
-    /// * `value` - A slice containing the `Word`(s) read from the register.
+    /// * `words` - A slice containing the `Word`(s) read from the register.
     ///
     /// # Returns
     ///
-    /// The corresponding `BaudRate`.
+    /// The corresponding `BaudRate` or an `Error` if decoding fails.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if:
-    /// 1.  `words` is empty.
-    /// 2.  The value read from the register is outside the valid range.
-    pub fn decode_from_holding_registers(value: &[Word]) -> Self {
-        match value.first() {
-            Some(0) => Self::B1200,
-            Some(1) => Self::B2400,
-            Some(2) => Self::B4800,
-            Some(3) => Self::B9600,
-            Some(4) => Self::B19200,
-            Some(&invalid_code) => {
-                // e.g., 5 or other undefined codes
-                panic!("Invalid baud rate code read from register: {invalid_code}")
-            }
-            None => panic!("Register data for baud rate must not be empty"),
+    /// * [`Error::UnexpectedDataLength`]: if `words` does not contain exactly one element.
+    /// * [`Error::InvalidValueCode`]: if the value from the register is not a valid baud rate code.
+    pub fn decode_from_holding_registers(words: &[Word]) -> Result<Self, Error> {
+        if words.len() != Self::QUANTITY as usize {
+            return Err(Error::UnexpectedDataLength {
+                expected: Self::QUANTITY as usize,
+                got: words.len(),
+            });
+        }
+        match words[0] {
+            0 => Ok(Self::B1200),
+            1 => Ok(Self::B2400),
+            2 => Ok(Self::B4800),
+            3 => Ok(Self::B9600),
+            4 => Ok(Self::B19200),
+            invalid_code => Err(Error::InvalidValueCode {
+                entity: "BaudRate".to_string(),
+                code: invalid_code,
+            }),
         }
     }
 
@@ -108,6 +126,14 @@ impl BaudRate {
         }
     }
 }
+
+/// Error returned when attempting to create a `BaudRate` from an unsupported `u16` value.
+#[derive(Error, Debug, PartialEq, Eq)]
+#[error("Unsupported baud rate value: {0}. Must be 1200, 2400, 4800, 9600, or 19200.")]
+pub struct ErrorInvalidBaudRate(
+    /// The invalid baud rate value that caused the error.
+    pub u16,
+);
 
 impl TryFrom<u16> for BaudRate {
     type Error = ErrorInvalidBaudRate;
@@ -168,7 +194,7 @@ impl<'de> serde::Deserialize<'de> for Address {
         D: serde::Deserializer<'de>,
     {
         let value = u8::deserialize(deserializer)?;
-        Address::try_from(value).map_err(serde::de::Error::custom)
+        Address::try_from(value).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 }
 
@@ -223,30 +249,36 @@ impl Address {
     ///
     /// # Returns
     ///
-    /// An [`Address`] struct containing the decoded and validated value.
+    /// An [`Address`] struct containing the decoded and validated value, or an `Error` if decoding fails.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if:
-    /// 1.  `words` is empty.
-    /// 2.  The upper byte of the `Word` containing the address is non-zero, indicating unexpected data.
-    /// 3.  The address value read from the register is outside the valid assignable range.
-    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
-        let word_value = *words
-            .first()
-            .expect("Register data for address must not be empty");
+    /// * [`Error::UnexpectedDataLength`]: if `words` does not contain exactly one element.
+    /// * [`Error::InvalidData`]: if the upper byte of the register value is non-zero.
+    pub fn decode_from_holding_registers(words: &[Word]) -> Result<Self, Error> {
+        if words.len() != Self::QUANTITY as usize {
+            return Err(Error::UnexpectedDataLength {
+                expected: Self::QUANTITY as usize,
+                got: words.len(),
+            });
+        }
+        let word_value = words[0];
 
-        // Ensure the upper byte is zero, as the address is a single byte value.
-        // This helps catch malformed responses if the device sends unexpected data.
-        assert_eq!(
-            word_value & 0xFF00,
-            0,
-            "Invalid data in address register: upper byte is non-zero (value: {word_value:#06X})"
-        );
+        if word_value & 0xFF00 != 0 {
+            return Err(Error::InvalidData {
+                details: format!(
+                    "Upper byte of address register is non-zero (value: {word_value:#06X})"
+                ),
+            });
+        }
 
         let address_byte = word_value as u8;
-        // Attempt to convert the u8 value, panicking if it's out of range (0 or > 247).
-        Self::try_from(address_byte).expect("Invalid address value read from device register")
+        match Self::try_from(address_byte) {
+            Ok(address) => Ok(address),
+            Err(err) => Err(Error::InvalidData {
+                details: format!("{err}"),
+            }),
+        }
     }
 
     /// Encodes the `Address` into its `Word` representation for writing to the Modbus register.
@@ -289,11 +321,11 @@ impl TryFrom<u8> for Address {
     /// # Example
     /// ```
     /// # use r4dcb08_lib::protocol::{Address, ErrorAddressOutOfRange};
-    /// assert!(Address::try_from(0).is_err());
+    /// assert!(matches!(Address::try_from(0), Err(ErrorAddressOutOfRange(_))));
     /// assert!(Address::try_from(1).is_ok());
     /// assert!(Address::try_from(247).is_ok());
     /// assert_eq!(Address::try_from(248).unwrap_err(), ErrorAddressOutOfRange(248));
-    /// assert!(Address::try_from(255).is_err()); // Broadcast address is not valid for TryFrom
+    /// assert!(matches!(Address::try_from(255), Err(ErrorAddressOutOfRange(_)))); // Broadcast address is not valid for TryFrom
     /// ```
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if (Self::MIN..=Self::MAX).contains(&value) {
@@ -330,7 +362,7 @@ impl<'de> serde::Deserialize<'de> for Temperature {
         if value.is_nan() {
             Ok(Temperature::NAN)
         } else {
-            Temperature::try_from(value).map_err(serde::de::Error::custom)
+            Temperature::try_from(value).map_err(|e| serde::de::Error::custom(e.to_string()))
         }
     }
 }
@@ -368,24 +400,26 @@ impl Temperature {
     ///
     /// # Returns
     ///
-    /// The `Word` representation of the temperature, ready for writing.
+    /// The `Word` representation of the temperature, ready for writing, or an `Error` if encoding fails.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the value is NAN
-    pub fn encode_for_write_register(&self) -> Word {
+    /// * [`Error::EncodeError`]: if the temperature value is `NAN`.
+    pub fn encode_for_write_register(&self) -> Result<Word, Error> {
         // Implements the encoding logic derived from protocol examples:
         // - Positive values are multiplied by 10.
         // - Negative values are encoded using two's complement representation after multiplying by 10.
         //   `(value * 10.0) as i16 as u16` achieves this.
         // - NAN cannot be directly encoded; attempting to encode NAN will result in an undefined `Word` value.
         if self.0.is_nan() {
-            panic!("Invalid temperature value: NAN cannot be encoded");
+            return Err(Error::EncodeError {
+                reason: "Temperature value is NAN, which cannot be encoded.".to_string(),
+            });
         }
         if self.0 >= 0.0 {
-            (self.0 * 10.0) as Word
+            Ok((self.0 * 10.0) as Word)
         } else {
-            (65536.0 + self.0 * 10.0) as Word
+            Ok((65536.0 + self.0 * 10.0) as Word)
         }
     }
 }
@@ -467,22 +501,21 @@ impl Temperatures {
     ///
     /// A `Temperatures` struct containing the decoded value for each channel.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `words` does not have length equal to [`NUMBER_OF_CHANNELS`].
-    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
-        assert_eq!(
-            words.len(),
-            NUMBER_OF_CHANNELS,
-            "Incorrect number of words provided for Temperatures decoding: expected {}, got {}",
-            NUMBER_OF_CHANNELS,
-            words.len()
-        );
+    /// * [`Error::UnexpectedDataLength`]: if `words` does not have length equal to [`NUMBER_OF_CHANNELS`].
+    pub fn decode_from_holding_registers(words: &[Word]) -> Result<Self, Error> {
+        if words.len() != NUMBER_OF_CHANNELS {
+            return Err(Error::UnexpectedDataLength {
+                expected: NUMBER_OF_CHANNELS,
+                got: words.len(),
+            });
+        }
         let mut temperatures = [Temperature::NAN; NUMBER_OF_CHANNELS];
         for (i, word) in words.iter().enumerate() {
             temperatures[i] = Temperature::decode_from_holding_registers(*word);
         }
-        Self(temperatures)
+        Ok(Self(temperatures))
     }
 
     /// Returns an iterator over the individual `Temperature` values.
@@ -554,7 +587,7 @@ impl<'de> serde::Deserialize<'de> for Channel {
         D: serde::Deserializer<'de>,
     {
         let value = u8::deserialize(deserializer)?;
-        Channel::try_from(value).map_err(serde::de::Error::custom)
+        Channel::try_from(value).map_err(|e| serde::de::Error::custom(e.to_string()))
     }
 }
 
@@ -578,7 +611,7 @@ impl std::ops::Deref for Channel {
 /// # Arguments
 ///
 /// * `0` - The channel value that caused the error.
-#[derive(Error, Debug, PartialEq)]
+#[derive(Error, Debug, PartialEq, Eq)]
 #[error(
     "The channel value {0} is outside the valid range of {min} to {max}",
     min = Channel::MIN,
@@ -635,23 +668,22 @@ impl TemperatureCorrection {
     ///
     /// A `TemperatureCorrection` struct containing the decoded value.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `words` does not have length equal to [`NUMBER_OF_CHANNELS`].
-    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
-        assert_eq!(
-            words.len(),
-            NUMBER_OF_CHANNELS,
-            "Incorrect number of words provided for TemperatureCorrection decoding: expected {}, got {}",
-            NUMBER_OF_CHANNELS,
-            words.len()
-        );
+    /// * [`Error::UnexpectedDataLength`]: if `words` does not have length equal to [`NUMBER_OF_CHANNELS`].
+    pub fn decode_from_holding_registers(words: &[Word]) -> Result<Self, Error> {
+        if words.len() != NUMBER_OF_CHANNELS {
+            return Err(Error::UnexpectedDataLength {
+                expected: NUMBER_OF_CHANNELS,
+                got: words.len(),
+            });
+        }
         let mut corrections = [Temperature::NAN; NUMBER_OF_CHANNELS];
         for (i, word) in words.iter().enumerate() {
             // Decoding is the same as Temperature
             corrections[i] = Temperature::decode_from_holding_registers(*word);
         }
-        Self(corrections)
+        Ok(Self(corrections))
     }
 
     /// Returns an iterator over the individual `Temperature` correction values.
@@ -679,8 +711,12 @@ impl TemperatureCorrection {
     ///
     /// # Returns
     ///
-    /// The `Word` representation of the correction value. Returns an undefined value if NAN is provided.
-    pub fn encode_for_write_register(correction_value: Temperature) -> Word {
+    /// The `Word` representation of the correction value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an [`Error::EncodeError`] if the `correction_value` is `NAN`.
+    pub fn encode_for_write_register(correction_value: Temperature) -> Result<Word, Error> {
         correction_value.encode_for_write_register()
     }
 
@@ -765,29 +801,31 @@ impl AutomaticReport {
     ///
     /// # Returns
     ///
-    /// The decoded `AutomaticReport` struct.
+    /// The decoded `AutomaticReport` struct or an `Error` if decoding fails.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if:
-    /// 1.  `words` is empty.
-    /// 2.  The upper byte of the `Word` containing the address is non-zero, indicating unexpected data.
-    /// 3.  The interval value read from the register is outside the valid assignable range.
-    pub fn decode_from_holding_registers(words: &[Word]) -> Self {
-        let word_value = *words
-            .first()
-            .expect("Register data for automatic report must not be empty");
+    /// * [`Error::UnexpectedDataLength`]: if `words` does not contain exactly one element.
+    /// * [`Error::InvalidData`]: if the upper byte of the register value is non-zero.
+    pub fn decode_from_holding_registers(words: &[Word]) -> Result<Self, Error> {
+        if words.len() != Self::QUANTITY as usize {
+            return Err(Error::UnexpectedDataLength {
+                expected: Self::QUANTITY as usize,
+                got: words.len(),
+            });
+        }
+        let word_value = words[0];
 
-        // Ensure the upper byte is zero, as the interval is a single byte value.
-        // This helps catch malformed responses if the device sends unexpected data.
-        assert_eq!(
-            word_value & 0xFF00,
-            0,
-            "Invalid data in interval register: upper byte is non-zero (value: {word_value:#06X})"
-        );
+        if word_value & 0xFF00 != 0 {
+            return Err(Error::InvalidData {
+                details: format!(
+                    "Upper byte of automatic report register is non-zero (value: {word_value:#06X})"
+                ),
+            });
+        }
 
         // not  use Self::try_from() - conversion cannot fail
-        Self::from(word_value as u8)
+        Ok(Self::from(word_value as u8))
     }
 
     /// Encodes the `AutomaticReport` interval into a `Word` value for writing to the Modbus register.
@@ -955,38 +993,38 @@ mod tests {
             Temperature::try_from(21.9)
                 .unwrap()
                 .encode_for_write_register(),
-            219
+            Ok(219)
         );
         assert_eq!(
             Temperature::try_from(10.0)
                 .unwrap()
                 .encode_for_write_register(),
-            100
+            Ok(100)
         );
         assert_eq!(
             Temperature::try_from(0.0)
                 .unwrap()
                 .encode_for_write_register(),
-            0
+            Ok(0)
         );
         // Negative
         assert_eq!(
             Temperature::try_from(-11.2)
                 .unwrap()
                 .encode_for_write_register(),
-            (-11.2 * 10.0) as i16 as u16
+            Ok((-11.2 * 10.0) as i16 as u16)
         ); // 65424
         assert_eq!(
             Temperature::try_from(-3.0)
                 .unwrap()
                 .encode_for_write_register(),
-            (-3.0 * 10.0) as i16 as u16
+            Ok((-3.0 * 10.0) as i16 as u16)
         ); // 65506
         assert_eq!(
             Temperature::try_from(-0.1)
                 .unwrap()
                 .encode_for_write_register(),
-            (-0.1 * 10.0) as i16 as u16
+            Ok((-0.1 * 10.0) as i16 as u16)
         ); // 0xFFFF
 
         // Boundaries
@@ -994,23 +1032,22 @@ mod tests {
             Temperature::try_from(Temperature::MAX)
                 .unwrap()
                 .encode_for_write_register(),
-            32767
+            Ok(32767)
         );
         assert_eq!(
             Temperature::try_from(Temperature::MIN)
                 .unwrap()
                 .encode_for_write_register(),
-            (Temperature::MIN * 10.0) as i16 as u16
+            Ok((Temperature::MIN * 10.0) as i16 as u16)
         ); // -32767 -> 0x8001
     }
 
     #[test]
-    #[should_panic]
     fn temperature_encode_nan() {
         // NAN
         // Asserting specific value might be brittle, depends on desired handling.
         // Here we assume it encodes to 0x8000 as per our implementation note.
-        let _ = Temperature::NAN.encode_for_write_register();
+        assert_matches!(Temperature::NAN.encode_for_write_register(), Err(..));
     }
 
     #[test]
@@ -1059,30 +1096,28 @@ mod tests {
     #[test]
     fn address_decode() {
         assert_eq!(
-            Address::decode_from_holding_registers(&[0x0001]),
+            Address::decode_from_holding_registers(&[0x0001]).unwrap(),
             Address::try_from(1).unwrap()
         );
         assert_eq!(
-            Address::decode_from_holding_registers(&[0x00F7]),
+            Address::decode_from_holding_registers(&[0x00F7]).unwrap(),
             Address::try_from(247).unwrap()
         );
         // Example from protocol returns 0x0001 for address 1
         assert_eq!(
-            Address::decode_from_holding_registers(&[0x0001]),
+            Address::decode_from_holding_registers(&[0x0001]).unwrap(),
             Address::try_from(1).unwrap()
         );
     }
 
     #[test]
-    #[should_panic]
     fn address_decode_empty() {
-        Address::decode_from_holding_registers(&[]);
+        assert_matches!(Address::decode_from_holding_registers(&[]), Err(..));
     }
 
     #[test]
-    #[should_panic]
     fn address_decode_invalid() {
-        Address::decode_from_holding_registers(&[0x0000]); // Address 0 is invalid
+        assert_matches!(Address::decode_from_holding_registers(&[0x0000]), Err(..)); // Address 0 is invalid
     }
 
     #[test]
@@ -1114,37 +1149,35 @@ mod tests {
     #[test]
     fn baudrate_decode() {
         assert_matches!(
-            BaudRate::decode_from_holding_registers(&[0]),
+            BaudRate::decode_from_holding_registers(&[0]).unwrap(),
             BaudRate::B1200
         );
         assert_matches!(
-            BaudRate::decode_from_holding_registers(&[1]),
+            BaudRate::decode_from_holding_registers(&[1]).unwrap(),
             BaudRate::B2400
         );
         assert_matches!(
-            BaudRate::decode_from_holding_registers(&[2]),
+            BaudRate::decode_from_holding_registers(&[2]).unwrap(),
             BaudRate::B4800
         );
         assert_matches!(
-            BaudRate::decode_from_holding_registers(&[3]),
+            BaudRate::decode_from_holding_registers(&[3]).unwrap(),
             BaudRate::B9600
         );
         assert_matches!(
-            BaudRate::decode_from_holding_registers(&[4]),
+            BaudRate::decode_from_holding_registers(&[4]).unwrap(),
             BaudRate::B19200
         );
     }
 
     #[test]
-    #[should_panic(expected = "Invalid baud rate code read from register: 5")]
     fn baudrate_decode_panics_on_invalid_value_high1() {
-        let _ = BaudRate::decode_from_holding_registers(&[5]);
+        assert_matches!(BaudRate::decode_from_holding_registers(&[5]), Err(..));
     }
 
     #[test]
-    #[should_panic(expected = "Register data for baud rate must not be empty")]
     fn baudrate_decode_panics_on_invalid_value_zero() {
-        let _ = BaudRate::decode_from_holding_registers(&[]);
+        assert_matches!(BaudRate::decode_from_holding_registers(&[]), Err(..));
     }
 
     #[test]
@@ -1219,7 +1252,7 @@ mod tests {
     #[test]
     fn temperatures_decode() {
         let words = [219, 65424, 100, 65506, 32767, 32769, 0, 32768]; // Mix of temps + NAN
-        let temps = Temperatures::decode_from_holding_registers(&words);
+        let temps = Temperatures::decode_from_holding_registers(&words).unwrap();
 
         assert_eq!(temps[0], Temperature::try_from(21.9).unwrap());
         assert_eq!(temps[1], Temperature::try_from(-11.2).unwrap());
@@ -1244,24 +1277,23 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn temperatures_decode_wrong_size() {
         let words = [219, 65424]; // Too few
-        Temperatures::decode_from_holding_registers(&words);
+        assert_matches!(Temperatures::decode_from_holding_registers(&words), Err(..));
     }
 
     #[test]
     #[should_panic]
     fn temperatures_index_out_of_bounds() {
         let words = [0; NUMBER_OF_CHANNELS];
-        let temps = Temperatures::decode_from_holding_registers(&words);
+        let temps = Temperatures::decode_from_holding_registers(&words).unwrap();
         let _ = temps[NUMBER_OF_CHANNELS]; // Index 8 is invalid
     }
 
     #[test]
     fn temperatures_display() {
         let words = [219, 65424, 32768, 0, 0, 0, 0, 0];
-        let temps = Temperatures::decode_from_holding_registers(&words);
+        let temps = Temperatures::decode_from_holding_registers(&words).unwrap();
         assert_eq!(
             temps.to_string(),
             "21.9, -11.2, NAN, 0.0, 0.0, 0.0, 0.0, 0.0"
@@ -1273,7 +1305,7 @@ mod tests {
     fn temperature_correction_decode() {
         // Uses the same Temperature decoding logic
         let words = [10, 65526, 0, 32768, 1, 2, 3, 4]; // 1.0, -1.0, 0.0, NAN etc.
-        let corrections = TemperatureCorrection::decode_from_holding_registers(&words);
+        let corrections = TemperatureCorrection::decode_from_holding_registers(&words).unwrap();
 
         assert_eq!(corrections[0], Temperature::try_from(1.0).unwrap());
         assert_eq!(corrections[1], Temperature::try_from(-1.0).unwrap());
@@ -1287,25 +1319,24 @@ mod tests {
         // Uses the same Temperature encoding logic
         assert_eq!(
             TemperatureCorrection::encode_for_write_register(Temperature::try_from(2.0).unwrap()),
-            20
+            Ok(20)
         );
         assert_eq!(
             TemperatureCorrection::encode_for_write_register(Temperature::try_from(-1.5).unwrap()),
-            (-1.5 * 10.0) as i16 as Word
+            Ok((-1.5 * 10.0) as i16 as Word)
         ); // 65521
         assert_eq!(
             TemperatureCorrection::encode_for_write_register(Temperature::try_from(0.0).unwrap()),
-            0
+            Ok(0)
         );
     }
 
     #[test]
-    #[should_panic]
     fn temperature_correction_encode_nan() {
         // Encoding NAN might depend on desired behavior, assuming 0x8000 based on Temperature encode
-        assert_eq!(
+        assert_matches!(
             TemperatureCorrection::encode_for_write_register(Temperature::NAN),
-            0x8000
+            Err(..)
         );
     }
 
@@ -1331,23 +1362,25 @@ mod tests {
     #[test]
     fn temperature_correction_display() {
         let words = [10, 65526, 0, 32768, 0, 0, 0, 0];
-        let corr = TemperatureCorrection::decode_from_holding_registers(&words);
+        let corr = TemperatureCorrection::decode_from_holding_registers(&words).unwrap();
         assert_eq!(corr.to_string(), "1.0, -1.0, 0.0, NAN, 0.0, 0.0, 0.0, 0.0");
     }
 
     // --- AutomaticReport Tests ---
     #[test]
     fn automatic_report_decode() {
-        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x0000]), report if *report == 0);
-        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x0001]), report if *report == 1);
-        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x000A]), report if *report == 10); // 10 seconds
-        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x00FF]), report if *report == 255); // Max seconds
+        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x0000]).unwrap(), report if *report == 0);
+        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x0001]).unwrap(), report if *report == 1);
+        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x000A]).unwrap(), report if *report == 10); // 10 seconds
+        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x00FF]).unwrap(), report if *report == 255); // Max seconds
     }
 
     #[test]
-    #[should_panic]
     fn automatic_report_decode_invalid() {
-        AutomaticReport::decode_from_holding_registers(&[0x0100]); // Value 256 is invalid
+        assert_matches!(
+            AutomaticReport::decode_from_holding_registers(&[0x0100]),
+            Err(..)
+        ); // Value 256 is invalid
     }
 
     #[test]

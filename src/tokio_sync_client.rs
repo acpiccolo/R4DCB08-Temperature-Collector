@@ -5,24 +5,9 @@
 //! the conversion between Rust types defined in the `crate::protocol` module and
 //! the raw Modbus register values.
 
-use crate::protocol as proto;
+use crate::{protocol as proto, tokio_common::Result};
 use std::time::Duration;
 use tokio_modbus::prelude::{SyncReader, SyncWriter};
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    /// Wraps `proto::Error`.
-    #[error(transparent)]
-    ProtocolError(#[from] proto::Error),
-    /// Wraps `tokio_modbus::ExceptionCode`.
-    #[error(transparent)]
-    TokioExceptionError(#[from] tokio_modbus::ExceptionCode),
-    /// Wraps `tokio_modbus::Error`.
-    #[error(transparent)]
-    TokioError(#[from] tokio_modbus::Error),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Synchronous client for interacting with the R4DCB08 temperature module over Modbus.
 ///
@@ -473,7 +458,7 @@ impl R4DCB08 {
     /// match client.factory_reset() {
     ///     Ok(()) => println!("Factory reset command sent. Power cycle the device to complete."),
     ///     Err(e) => {
-    ///         let ignore_error = if let r4dcb08_lib::tokio_sync_client::Error::TokioError(tokio_modbus::Error::Transport(error)) = &e {
+    ///         let ignore_error = if let r4dcb08_lib::tokio_common::Error::TokioError(tokio_modbus::Error::Transport(error)) = &e {
     ///             // After the a successful factory reset we get no response :-(
     ///             error.kind() == std::io::ErrorKind::TimedOut
     ///         } else {

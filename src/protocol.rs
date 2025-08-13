@@ -10,8 +10,8 @@ use thiserror::Error;
 
 /// A comprehensive error type for all operations within the `protocol` module.
 ///
-/// This enum consolidates errors that can occur during the decoding of Modbus
-/// register data, encoding of values for writing, or validation of parameters.
+/// This enum consolidates errors that can occur during the decoding
+/// data, encoding of values, or validation of parameters.
 #[derive(Error, Debug, PartialEq)]
 pub enum Error {
     /// Error indicating that the data received from a Modbus read has an unexpected length.

@@ -6,6 +6,76 @@
 //! the raw Modbus register values.
 //!
 //! All client methods are `async` and must be `.await`ed.
+//!
+//! # Examples
+//!
+//! ## TCP Client Example
+//!
+//! ```no_run
+//! use r4dcb08_lib::tokio_async_client::R4DCB08;
+//! use std::net::SocketAddr;
+//! use std::time::Duration;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let socket_addr: SocketAddr = "127.0.0.1:502".parse()?;
+//!
+//!     // Connect to the Modbus TCP device
+//!     let mut modbus_ctx = tokio_modbus::client::tcp::connect(socket_addr).await?;
+//!
+//!     // Create a new R4DCB08 client
+//!     let mut client = R4DCB08::new(modbus_ctx);
+//!
+//!     // Read temperatures from all 8 channels with a timeout
+//!     let result = tokio::time::timeout(
+//!         Duration::from_secs(1),
+//!         client.read_temperatures()
+//!     ).await;
+//!
+//!     match result {
+//!         Ok(Ok(temperatures)) => println!("Temperatures: {}", temperatures),
+//!         Ok(Err(e)) => eprintln!("Modbus error: {}", e),
+//!         Err(e) => eprintln!("Timeout error: {}", e),
+//!     }
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## RTU Client Example
+//!
+//! ```no_run
+//! use r4dcb08_lib::tokio_async_client::R4DCB08;
+//! use r4dcb08_lib::protocol::{Address, BaudRate};
+//! use std::time::Duration;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let builder = r4dcb08_lib::tokio_common::serial_port_builder(
+//!         "/dev/ttyUSB0", // Or "COM3" on Windows, etc.
+//!         &BaudRate::B9600,
+//!     );
+//!     let port = tokio_serial::SerialStream::open(&builder)?;
+//!     let slave = tokio_modbus::Slave(1);
+//!     let mut modbus_ctx = tokio_modbus::client::rtu::attach_slave(port, slave);
+//!
+//!     let mut client = R4DCB08::new(modbus_ctx);
+//!
+//!     // Read the device's configured baud rate with a timeout
+//!     let result = tokio::time::timeout(
+//!         Duration::from_secs(1),
+//!         client.read_baud_rate()
+//!     ).await;
+//!
+//!     match result {
+//!         Ok(Ok(remote_baud_rate)) => println!("Device baud rate: {}", remote_baud_rate),
+//!         Ok(Err(e)) => eprintln!("Modbus error: {}", e),
+//!         Err(e) => eprintln!("Timeout error: {}", e),
+//!     }
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use crate::{protocol as proto, tokio_common::Result};
 use tokio_modbus::prelude::{Reader, Writer};
@@ -41,19 +111,13 @@ impl R4DCB08 {
     ///
     /// #[tokio::main]
     /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let tty_path = "/dev/ttyUSB0"; // Or "COM3" on Windows, etc.
-    ///     let slave_id = Address::try_from(1)?;
-    ///
-    ///     // Note: Serial port specific timeouts (like inter-character) are configured on the builder.
-    ///     // Overall Modbus operation timeouts are typically handled by wrapping calls with `tokio::time::timeout`.
-    ///     let builder = tokio_serial::new(tty_path, BaudRate::default().into())
-    ///        .parity(tokio_serial::Parity::None)
-    ///        .stop_bits(tokio_serial::StopBits::One)
-    ///        .data_bits(tokio_serial::DataBits::Eight)
-    ///        .flow_control(tokio_serial::FlowControl::None);
+    ///     let builder = r4dcb08_lib::tokio_common::serial_port_builder(
+    ///         "/dev/ttyUSB0", // Or "COM3" on Windows, etc.
+    ///         &BaudRate::B9600
+    ///     );
     ///
     ///     let port = tokio_serial::SerialStream::open(&builder)?;
-    ///     let modbus_ctx = tokio_modbus::client::rtu::attach_slave(port, tokio_modbus::Slave(*slave_id));
+    ///     let modbus_ctx = tokio_modbus::client::rtu::attach_slave(port, tokio_modbus::Slave(1));
     ///     let mut client = R4DCB08::new(modbus_ctx);
     ///
     ///     // Example of using tokio::time::timeout for an operation

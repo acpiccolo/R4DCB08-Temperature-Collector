@@ -4,6 +4,59 @@
 //! the R4DCB08 8-channel temperature module using Modbus RTU or TCP. It handles
 //! the conversion between Rust types defined in the `crate::protocol` module and
 //! the raw Modbus register values.
+//!
+//! # Examples
+//!
+//! ## TCP Client Example
+//!
+//! ```no_run
+//! use r4dcb08_lib::tokio_sync_client::R4DCB08;
+//! use std::net::SocketAddr;
+//! use std::time::Duration;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let socket_addr: SocketAddr = "127.0.0.1:502".parse()?;
+//!
+//!     // Connect to the Modbus TCP device
+//!     let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect(socket_addr)?;
+//!     modbus_ctx.set_timeout(Some(Duration::from_secs(1)));
+//!
+//!     // Create a new R4DCB08 client
+//!     let mut client = R4DCB08::new(modbus_ctx);
+//!
+//!     // Read temperatures from all 8 channels
+//!     let temperatures = client.read_temperatures()?;
+//!     println!("Temperatures: {}", temperatures);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ## RTU Client Example
+//!
+//! ```no_run
+//! use r4dcb08_lib::tokio_sync_client::R4DCB08;
+//! use r4dcb08_lib::protocol::{Address, BaudRate};
+//! use std::time::Duration;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     let builder = r4dcb08_lib::tokio_common::serial_port_builder(
+//!         "/dev/ttyUSB0", // Or "COM3" on Windows, etc.
+//!         &BaudRate::B9600,
+//!     );
+//!     let slave = tokio_modbus::Slave(1);
+//!     let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(&builder, slave)?;
+//!     modbus_ctx.set_timeout(Some(Duration::from_secs(1)));
+//!
+//!     let mut client = R4DCB08::new(modbus_ctx);
+//!
+//!     // Read the device's configured baud rate
+//!     let remote_baud_rate = client.read_baud_rate()?;
+//!     println!("Device baud rate: {}", remote_baud_rate);
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use crate::{protocol as proto, tokio_common::Result};
 use std::time::Duration;
@@ -38,12 +91,11 @@ impl R4DCB08 {
     /// use r4dcb08_lib::protocol::{Address, BaudRate};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let builder = tokio_serial::new("/dev/ttyUSB0", BaudRate::default().into())
-    ///        .parity(tokio_serial::Parity::None)
-    ///        .stop_bits(tokio_serial::StopBits::One)
-    ///        .data_bits(tokio_serial::DataBits::Eight)
-    ///        .flow_control(tokio_serial::FlowControl::None);
-    ///     let slave = tokio_modbus::Slave(*Address::default()); // Default is 1
+    ///     let builder = r4dcb08_lib::tokio_common::serial_port_builder(
+    ///         "/dev/ttyUSB0", // Or "COM3" on Windows, etc.
+    ///         &BaudRate::B9600
+    ///     );
+    ///     let slave = tokio_modbus::Slave(1);
     ///     let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(&builder, slave).expect("Failed to connect");
     ///     let mut client = R4DCB08::new(modbus_ctx);
     ///     // ... use client ...

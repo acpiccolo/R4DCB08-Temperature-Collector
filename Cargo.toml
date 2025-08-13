@@ -65,4 +65,4 @@ tokio = { version = "1", features = ["full"] }
 assert_matches = "1"
 
 [package.metadata.cargo-machete]
-ignored = ["tokio"]
+ignored = ["tokio", "humantime-serde"]

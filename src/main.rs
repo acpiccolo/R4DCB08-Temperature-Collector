@@ -16,13 +16,13 @@
 //!
 //! The CLI leverages the `r4dcb08_lib` crate for protocol definitions and client operations.
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use dialoguer::Confirm;
 use flexi_logger::{Logger, LoggerHandle};
 use log::*;
 use r4dcb08_lib::{protocol as proto, tokio_sync_client::R4DCB08};
-use std::io::{Write, stdout};
+use std::io::{stdout, Write};
 use std::{panic, time::Duration};
 
 mod commandline;
@@ -329,7 +329,7 @@ fn handle_factory_reset(client: &mut R4DCB08, delay: Duration) -> Result<()> {
 
     info!("Sending factory reset command...");
     if let Err(error) = client.factory_reset() {
-        let ignore_error = if let r4dcb08_lib::tokio_common::Error::TokioError(
+        let ignore_error = if let r4dcb08_lib::tokio_common::Error::Modbus(
             tokio_modbus::Error::Transport(error),
         ) = &error
         {
@@ -513,14 +513,14 @@ mod tests {
             minimum_rtu_delay(&proto::BaudRate::B19200).as_micros(),
             2005
         ); // 38.5 / 19200 * 1e6
-        // Test the practical minimum clamp
-        // Assuming a hypothetical baud rate that would result in < 1750us
-        // e.g., 38400 baud: 38.5 / 38400 * 1e6 = 1002.6 us, should be clamped to 1750us
-        // Since our max is 19200, this clamp is mostly for future-proofing or extreme cases.
-        // For 19200, 2005us > 1750us, so no clamp.
-        // Let's simulate a very high baud rate to test the clamp:
-        // If we had a BaudRate::B38400, it would be clamped.
-        // For now, the existing rates are above the clamp threshold.
+           // Test the practical minimum clamp
+           // Assuming a hypothetical baud rate that would result in < 1750us
+           // e.g., 38400 baud: 38.5 / 38400 * 1e6 = 1002.6 us, should be clamped to 1750us
+           // Since our max is 19200, this clamp is mostly for future-proofing or extreme cases.
+           // For 19200, 2005us > 1750us, so no clamp.
+           // Let's simulate a very high baud rate to test the clamp:
+           // If we had a BaudRate::B38400, it would be clamped.
+           // For now, the existing rates are above the clamp threshold.
     }
 
     #[test]

@@ -148,9 +148,7 @@ fn rtu_scan(
     );
     client.set_timeout(timeout);
 
-    Ok(client
-        .read_address()
-        .with_context(|| "Cannot read address")?)
+    client.read_address().with_context(|| "Cannot read address")
 }
 
 /// Prompts the user for confirmation when an operation requires only one module on the bus.

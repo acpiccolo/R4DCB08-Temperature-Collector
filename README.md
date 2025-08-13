@@ -24,6 +24,11 @@ To use this tool, you need:
 
 ![R4DCB08 Temperature Collector](/images/r4dcb08.png)
 
+## Technical Documentation
+For more detailed information, please refer to the official datasheets available in the [`docs/`](./docs/) directory:
+- [`R4DCB08_description.pdf`](./docs/R4DCB08_description.pdf)
+- [`R4DCB08_modbus_rtu_protocol.pdf`](./docs/R4DCB08_modbus_rtu_protocol.pdf)
+
 ## Technical Specifications R4DCB08
 | Feature | Details |
 |---------|---------|
@@ -63,37 +68,108 @@ Ensure you have the following dependencies installed before proceeding:
    This installs `tempcol` to `$HOME/.cargo/bin`, making it accessible from anywhere.
 
 ## Usage
-### View Available Commands
-To list all available commands and their options, run:
+
+This tool provides a range of commands for device discovery, configuration, and data acquisition.
+
+### Connection Types
+You can connect to the temperature collector via Modbus RTU (serial) or TCP.
+
+- **RTU (Serial):**
+  ```sh
+  tempcol rtu --device /dev/ttyUSB0 --address 1 --baud-rate 9600 <COMMAND>
+  ```
+- **TCP:**
+  ```sh
+  tempcol tcp 192.168.0.222:502 <COMMAND>
+  ```
+
+### Global Options
+These options can be used with any command:
+- `--timeout <DURATION>`: Sets the I/O timeout for Modbus operations (e.g., `500ms`, `1s`). Default: `200ms`.
+- `--delay <DURATION>`: Specifies a minimum delay between Modbus commands. Crucial for some USB-to-RS485 converters. Default: `50ms`.
+
+### Available Commands
+
+#### Help
+To see a full list of commands and options:
 ```sh
 tempcol --help
 ```
-### Scan for Connected RTU Devices
-To detect available Modbus RTU devices:
-```sh
-tempcol rtu-scan
-```
-### Read Temperatures Values
-For **RTU Modbus (RS485) connected** devices:
-```sh
-tempcol rtu --address 1 --baudrate 9600 read
-```
-For **TCP Modbus connected** devices:
-```sh
-tempcol tcp 192.168.0.222:502 read
-```
-#### Set Temperature Correction
-To apply a temperature correction of **-1.5°C** to sensor channel 0
-```sh
-tempcol rtu --address 1 --baudrate 9600 set-correction 0 -1.5
-```
-#### Run as a Daemon for MQTT Integration
-To continuously collect data and publish it to an MQTT broker, you will need to create an MQTT configuration file (see below).
-Example:
-```sh
-tempcol rtu --address 1 --baudrate 9600 daemon mqtt --mqtt-config /path/to/your/mqtt.yaml
-```
-If the `--mqtt-config` option is omitted, the application will automatically look for a file named `mqtt.yaml` in the current working directory.
+
+#### Device Discovery
+- **Scan for RTU Devices:** Detects connected R4DCB08 devices on the specified serial port.
+  ```sh
+  tempcol rtu-scan --device /dev/ttyUSB0
+  ```
+- **Query RTU Address:** Finds the address of a single connected device.
+  ```sh
+  # Ensure only one device is connected on the bus
+  tempcol rtu query-address
+  ```
+
+#### Read Commands
+- **Read Temperatures:** Reads all 8 temperature sensor channels.
+  ```sh
+  tempcol tcp <IP:PORT> read
+  ```
+- **Read Temperature Corrections:** Shows the correction values for all channels.
+  ```sh
+  tempcol rtu --address 1 read-correction
+  ```
+- **Read Baud Rate:** Displays the device's configured baud rate.
+  ```sh
+  tempcol rtu --address 1 read-baud-rate
+  ```
+- **Read Auto-Report Interval:** Shows the automatic reporting interval.
+  ```sh
+  tempcol rtu --address 1 read-automatic-report
+  ```
+- **Read All:** Reads all primary device values at once.
+  ```sh
+  tempcol rtu --address 1 read-all
+  ```
+
+#### Set Commands
+- **Set Temperature Correction:** Applies a calibration offset to a sensor.
+  ```sh
+  # Set channel 0 correction to -1.5°C
+  tempcol rtu --address 1 set-correction 0 -1.5
+  ```
+- **Set Baud Rate:** Changes the device's baud rate (requires power cycle).
+  ```sh
+  tempcol rtu --address 1 set-baud-rate 19200
+  ```
+- **Set Device Address:** Assigns a new Modbus RTU address (1-247).
+  ```sh
+  tempcol rtu --address 1 set-address 2
+  ```
+- **Set Auto-Report Interval:** Configures the automatic reporting time (0 to disable).
+  ```sh
+  # Set to report every 30 seconds
+  tempcol rtu --address 1 set-automatic-report 30
+  ```
+
+#### Daemon Mode
+Run continuously to poll for temperatures.
+
+- **Log to Console:**
+  ```sh
+  # Poll every 5 seconds and print to console
+  tempcol rtu --address 1 daemon --poll-interval 5s console
+  ```
+- **Publish to MQTT:**
+  ```sh
+  # Poll and publish to an MQTT broker
+  tempcol tcp <IP:PORT> daemon mqtt --mqtt-config /path/to/mqtt.yaml
+  ```
+  If `--mqtt-config` is omitted, `mqtt.yaml` is loaded from the current directory.
+
+#### Other Commands
+- **Factory Reset:** Resets the device to its default settings (requires power cycle).
+  ```sh
+  # Warning: This is irreversible
+  tempcol rtu --address 1 factory-reset
+  ```
 
 ### MQTT Configuration File
 

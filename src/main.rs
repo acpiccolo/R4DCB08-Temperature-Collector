@@ -139,7 +139,7 @@ fn rtu_scan(
 ) -> Result<proto::Address> {
     let mut client = R4DCB08::new(
         tokio_modbus::client::sync::rtu::connect_slave(
-            &r4dcb08_lib::tokio_serial::serial_port_builder(device_name, baud_rate),
+            &r4dcb08_lib::tokio_common::serial_port_builder(device_name, baud_rate),
             tokio_modbus::Slave(*proto::Address::BROADCAST),
         )
         .with_context(|| {
@@ -148,7 +148,9 @@ fn rtu_scan(
     );
     client.set_timeout(timeout);
 
-    client.read_address().with_context(|| "Cannot read address")
+    Ok(client
+        .read_address()
+        .with_context(|| "Cannot read address")?)
 }
 
 /// Prompts the user for confirmation when an operation requires only one module on the bus.
@@ -266,7 +268,7 @@ fn create_client<'a>(
             *delay = check_rtu_delay(*delay, baud_rate);
             (
                 R4DCB08::new(tokio_modbus::client::sync::rtu::connect_slave(
-                    &r4dcb08_lib::tokio_serial::serial_port_builder(device, baud_rate),
+                    &r4dcb08_lib::tokio_common::serial_port_builder(device, baud_rate),
                     tokio_modbus::Slave(*final_device_address),
                 )?),
                 command,
@@ -327,7 +329,7 @@ fn handle_factory_reset(client: &mut R4DCB08, delay: Duration) -> Result<()> {
 
     info!("Sending factory reset command...");
     if let Err(error) = client.factory_reset() {
-        let ignore_error = if let r4dcb08_lib::tokio_sync_client::Error::TokioError(
+        let ignore_error = if let r4dcb08_lib::tokio_common::Error::TokioError(
             tokio_modbus::Error::Transport(error),
         ) = &error
         {

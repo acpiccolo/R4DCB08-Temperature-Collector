@@ -7,23 +7,8 @@
 //!
 //! All client methods are `async` and must be `.await`ed.
 
-use crate::protocol as proto;
+use crate::{protocol as proto, tokio_common::Result};
 use tokio_modbus::prelude::{Reader, Writer};
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    /// Wraps `proto::Error`.
-    #[error(transparent)]
-    ProtocolError(#[from] proto::Error),
-    /// Wraps `tokio_modbus::ExceptionCode`.
-    #[error(transparent)]
-    TokioExceptionError(#[from] tokio_modbus::ExceptionCode),
-    /// Wraps `tokio_modbus::Error`.
-    #[error(transparent)]
-    TokioError(#[from] tokio_modbus::Error),
-}
-
-pub type Result<T> = std::result::Result<T, Error>;
 
 /// Asynchronous client for interacting with the R4DCB08 temperature module over Modbus.
 ///

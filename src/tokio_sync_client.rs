@@ -458,7 +458,7 @@ impl R4DCB08 {
     /// match client.factory_reset() {
     ///     Ok(()) => println!("Factory reset command sent. Power cycle the device to complete."),
     ///     Err(e) => {
-    ///         let ignore_error = if let r4dcb08_lib::tokio_common::Error::TokioError(tokio_modbus::Error::Transport(error)) = &e {
+    ///         let ignore_error = if let r4dcb08_lib::tokio_common::Error::Modbus(tokio_modbus::Error::Transport(error)) = &e {
     ///             // After the a successful factory reset we get no response :-(
     ///             error.kind() == std::io::ErrorKind::TimedOut
     ///         } else {

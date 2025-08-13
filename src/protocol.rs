@@ -963,9 +963,9 @@ mod tests {
             Temperature::decode_from_holding_registers(0xFFFF),
             Temperature::try_from(-0.1).unwrap()
         ); // -1 -> FF F5? No, (FFFFh as i16) = -1. So -0.1
-        // Boundary Negative (Largest negative value / MIN)
-        // 65536 - 32768 = 32768 = 0x8000 (NAN)
-        // Smallest s16 is -32768 -> 0x8000. Encoded is -3276.8
+           // Boundary Negative (Largest negative value / MIN)
+           // 65536 - 32768 = 32768 = 0x8000 (NAN)
+           // Smallest s16 is -32768 -> 0x8000. Encoded is -3276.8
         assert_eq!(
             Temperature::decode_from_holding_registers(0x8001),
             Temperature::try_from(-3276.7).unwrap()
@@ -1090,7 +1090,8 @@ mod tests {
             Address::try_from(Address::MAX + 1),
             Err(ErrorAddressOutOfRange(248))
         );
-        assert_matches!(Address::try_from(255), Err(ErrorAddressOutOfRange(255))); // Broadcast address is not valid via TryFrom
+        assert_matches!(Address::try_from(255), Err(ErrorAddressOutOfRange(255)));
+        // Broadcast address is not valid via TryFrom
     }
 
     #[test]
@@ -1117,7 +1118,8 @@ mod tests {
 
     #[test]
     fn address_decode_invalid() {
-        assert_matches!(Address::decode_from_holding_registers(&[0x0000]), Err(..)); // Address 0 is invalid
+        assert_matches!(Address::decode_from_holding_registers(&[0x0000]), Err(..));
+        // Address 0 is invalid
     }
 
     #[test]
@@ -1372,7 +1374,8 @@ mod tests {
         assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x0000]).unwrap(), report if *report == 0);
         assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x0001]).unwrap(), report if *report == 1);
         assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x000A]).unwrap(), report if *report == 10); // 10 seconds
-        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x00FF]).unwrap(), report if *report == 255); // Max seconds
+        assert_matches!(AutomaticReport::decode_from_holding_registers(&[0x00FF]).unwrap(), report if *report == 255);
+        // Max seconds
     }
 
     #[test]

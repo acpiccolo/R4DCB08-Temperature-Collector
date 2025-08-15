@@ -10,7 +10,7 @@
 //! ## TCP Client Example
 //!
 //! ```no_run
-//! use r4dcb08_lib::tokio_sync_client::R4DCB08;
+//! use r4dcb08_lib::tokio_sync::R4DCB08;
 //! use std::net::SocketAddr;
 //! use std::time::Duration;
 //!
@@ -21,11 +21,8 @@
 //!     let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect(socket_addr)?;
 //!     modbus_ctx.set_timeout(Some(Duration::from_secs(1)));
 //!
-//!     // Create a new R4DCB08 client
-//!     let mut client = R4DCB08::new(modbus_ctx);
-//!
 //!     // Read temperatures from all 8 channels
-//!     let temperatures = client.read_temperatures()?;
+//!     let temperatures = R4DCB08::read_temperatures(&mut modbus_ctx)?;
 //!     println!("Temperatures: {}", temperatures);
 //!
 //!     Ok(())
@@ -35,7 +32,7 @@
 //! ## RTU Client Example
 //!
 //! ```no_run
-//! use r4dcb08_lib::tokio_sync_client::R4DCB08;
+//! use r4dcb08_lib::tokio_sync::R4DCB08;
 //! use r4dcb08_lib::protocol::{Address, BaudRate};
 //! use std::time::Duration;
 //!
@@ -48,10 +45,8 @@
 //!     let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(&builder, slave)?;
 //!     modbus_ctx.set_timeout(Some(Duration::from_secs(1)));
 //!
-//!     let mut client = R4DCB08::new(modbus_ctx);
-//!
 //!     // Read the device's configured baud rate
-//!     let remote_baud_rate = client.read_baud_rate()?;
+//!     let remote_baud_rate = R4DCB08::read_baud_rate(&mut modbus_ctx)?;
 //!     println!("Device baud rate: {}", remote_baud_rate);
 //!
 //!     Ok(())
@@ -59,7 +54,6 @@
 //! ```
 
 use crate::{protocol as proto, tokio_common::Result};
-use std::time::Duration;
 use tokio_modbus::prelude::{SyncReader, SyncWriter};
 
 /// Synchronous client for interacting with the R4DCB08 temperature module over Modbus.
@@ -69,110 +63,9 @@ use tokio_modbus::prelude::{SyncReader, SyncWriter};
 ///
 /// All methods that interact with the Modbus device will block the current thread.
 #[derive(Debug)]
-pub struct R4DCB08 {
-    ctx: tokio_modbus::client::sync::Context,
-}
+pub struct R4DCB08;
 
 impl R4DCB08 {
-    /// Creates a new `R4DCB08` client with a given `tokio-modbus` synchronous context.
-    ///
-    /// The `tokio_modbus::client::sync::Context` should be appropriately configured for the target Modbus slave device
-    /// (e.g., with the correct slave ID for RTU, or target IP and port for TCP).
-    ///
-    /// # Arguments
-    ///
-    /// * `ctx` - A `tokio_modbus::client::sync::Context`.
-    ///
-    /// # Examples
-    ///
-    /// // Example for RTU (Serial)
-    /// ```no_run
-    /// use r4dcb08_lib::tokio_sync_client::R4DCB08;
-    /// use r4dcb08_lib::protocol::{Address, BaudRate};
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let builder = r4dcb08_lib::tokio_common::serial_port_builder(
-    ///         "/dev/ttyUSB0", // Or "COM3" on Windows, etc.
-    ///         &BaudRate::B9600
-    ///     );
-    ///     let slave = tokio_modbus::Slave(1);
-    ///     let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(&builder, slave).expect("Failed to connect");
-    ///     let mut client = R4DCB08::new(modbus_ctx);
-    ///     // ... use client ...
-    /// #   Ok(())
-    /// # }
-    /// ```
-    ///
-    /// // Example for TCP
-    /// ```no_run
-    /// use r4dcb08_lib::tokio_sync_client::R4DCB08;
-    /// use std::net::SocketAddr;
-    ///
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ///     let socket_addr: SocketAddr = "127.0.0.1:502".parse()?;
-    ///     let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect(socket_addr)?;
-    ///     let mut client = R4DCB08::new(modbus_ctx);
-    ///     let temperatures = client.read_temperatures()?;
-    ///     println!("Temperatures: {}", temperatures);
-    /// #   Ok(())
-    /// # }
-    /// ```
-    pub fn new(ctx: tokio_modbus::client::sync::Context) -> Self {
-        Self { ctx }
-    }
-
-    /// Sets the timeout for subsequent Modbus read/write operations.
-    ///
-    /// If an operation takes longer than this duration, it will fail with a
-    /// `tokio_modbus::Error` of kind `Timeout`.
-    ///
-    /// # Arguments
-    ///
-    /// * `timeout` - The `Duration` to wait before timing out. Can also accept `Option<Duration>`.
-    ///   Passing `None` disables the timeout.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
-    /// # use std::time::Duration;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
-    /// client.set_timeout(Duration::from_secs(2)); // Set timeout to 2 seconds
-    /// client.set_timeout(None); // Disable timeout
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn set_timeout(&mut self, timeout: impl Into<Option<Duration>>) {
-        self.ctx.set_timeout(timeout.into());
-    }
-
-    /// Retrieves the currently configured timeout for Modbus operations.
-    ///
-    /// # Returns
-    ///
-    /// An `Option<Duration>` representing the timeout. `None` indicates no timeout is set.
-    ///
-    /// # Examples
-    ///
-    /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
-    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let client = R4DCB08::new(modbus_ctx);
-    /// if let Some(timeout) = client.timeout() {
-    ///     println!("Current timeout: {:?}", timeout);
-    /// } else {
-    ///     println!("No timeout is set.");
-    /// }
-    /// # Ok(())
-    /// # }
-    /// ```
-    pub fn timeout(&self) -> Option<Duration> {
-        self.ctx.timeout()
-    }
-
     /// Helper function to map tokio result to our result.
     fn map_tokio_result<T>(result: tokio_modbus::Result<T>) -> Result<T> {
         match result {
@@ -183,12 +76,17 @@ impl R4DCB08 {
     }
 
     /// Helper function to read holding registers and decode them into a specific type.
-    fn read_and_decode<T, F>(&mut self, address: u16, quantity: u16, decoder: F) -> Result<T>
+    fn read_and_decode<T, F>(
+        ctx: &mut tokio_modbus::client::sync::Context,
+        address: u16,
+        quantity: u16,
+        decoder: F,
+    ) -> Result<T>
     where
         F: FnOnce(&[u16]) -> std::result::Result<T, proto::Error>,
     {
         Ok(decoder(&Self::map_tokio_result(
-            self.ctx.read_holding_registers(address, quantity),
+            ctx.read_holding_registers(address, quantity),
         )?)?)
     }
 
@@ -211,11 +109,10 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
-    /// let temperatures = client.read_temperatures()?;
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// let temperatures = R4DCB08::read_temperatures(&mut modbus_ctx)?;
     /// println!("Temperatures read successfully:");
     /// for (i, temp) in temperatures.iter().enumerate() {
     ///     println!("  Channel {}: {}", i, temp); // `temp` uses Display impl from protocol
@@ -223,8 +120,11 @@ impl R4DCB08 {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_temperatures(&mut self) -> Result<proto::Temperatures> {
-        self.read_and_decode(
+    pub fn read_temperatures(
+        ctx: &mut tokio_modbus::client::sync::Context,
+    ) -> Result<proto::Temperatures> {
+        Self::read_and_decode(
+            ctx,
             proto::Temperatures::ADDRESS,
             proto::Temperatures::QUANTITY,
             proto::Temperatures::decode_from_holding_registers,
@@ -250,17 +150,19 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
-    /// let corrections = client.read_temperature_correction()?;
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// let corrections = R4DCB08::read_temperature_correction(&mut modbus_ctx)?;
     /// println!("Temperature correction values: {}", corrections);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_temperature_correction(&mut self) -> Result<proto::TemperatureCorrection> {
-        self.read_and_decode(
+    pub fn read_temperature_correction(
+        ctx: &mut tokio_modbus::client::sync::Context,
+    ) -> Result<proto::TemperatureCorrection> {
+        Self::read_and_decode(
+            ctx,
             proto::TemperatureCorrection::ADDRESS,
             proto::TemperatureCorrection::QUANTITY,
             proto::TemperatureCorrection::decode_from_holding_registers,
@@ -291,27 +193,26 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// use r4dcb08_lib::protocol::{Channel, Temperature};
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
     /// // Set the temperature correction for channel 3 to +1.3°C.
     /// let channel = Channel::try_from(3)?; // Or handle ErrorChannelOutOfRange
     /// let correction_value = Temperature::try_from(1.3)?; // Or handle ErrorDegreeCelsiusOutOfRange
     ///
-    /// client.set_temperature_correction(channel, correction_value)?;
+    /// R4DCB08::set_temperature_correction(&mut modbus_ctx, channel, correction_value)?;
     /// println!("Correction for channel {} set to {}.", channel, correction_value);
     /// # Ok(())
     /// # }
     /// ```
     pub fn set_temperature_correction(
-        &mut self,
+        ctx: &mut tokio_modbus::client::sync::Context,
         channel: proto::Channel,
         correction: proto::Temperature,
     ) -> Result<()> {
-        Self::map_tokio_result(self.ctx.write_single_register(
+        Self::map_tokio_result(ctx.write_single_register(
             proto::TemperatureCorrection::channel_address(channel),
             proto::TemperatureCorrection::encode_for_write_register(correction)?,
         ))
@@ -335,11 +236,10 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
-    /// let report = client.read_automatic_report()?;
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// let report = R4DCB08::read_automatic_report(&mut modbus_ctx)?;
     /// if report.is_disabled() {
     ///     println!("Automatic reporting is disabled.");
     /// } else {
@@ -348,8 +248,11 @@ impl R4DCB08 {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_automatic_report(&mut self) -> Result<proto::AutomaticReport> {
-        self.read_and_decode(
+    pub fn read_automatic_report(
+        ctx: &mut tokio_modbus::client::sync::Context,
+    ) -> Result<proto::AutomaticReport> {
+        Self::read_and_decode(
+            ctx,
             proto::AutomaticReport::ADDRESS,
             proto::AutomaticReport::QUANTITY,
             proto::AutomaticReport::decode_from_holding_registers,
@@ -377,26 +280,28 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// use r4dcb08_lib::protocol::AutomaticReport;
     /// use std::time::Duration;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
     /// // Set the automatic report interval to 10 seconds.
     /// let report_interval = AutomaticReport::try_from(Duration::from_secs(10))?;
-    /// client.set_automatic_report(report_interval)?;
+    /// R4DCB08::set_automatic_report(&mut modbus_ctx, report_interval)?;
     /// println!("Automatic report interval set to 10 seconds.");
     ///
     /// // Disable automatic reporting
-    /// client.set_automatic_report(AutomaticReport::DISABLED)?;
+    /// R4DCB08::set_automatic_report(&mut modbus_ctx, AutomaticReport::DISABLED)?;
     /// println!("Automatic report disabled.");
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_automatic_report(&mut self, report: proto::AutomaticReport) -> Result<()> {
-        Self::map_tokio_result(self.ctx.write_single_register(
+    pub fn set_automatic_report(
+        ctx: &mut tokio_modbus::client::sync::Context,
+        report: proto::AutomaticReport,
+    ) -> Result<()> {
+        Self::map_tokio_result(ctx.write_single_register(
             proto::AutomaticReport::ADDRESS,
             report.encode_for_write_register(),
         ))
@@ -418,17 +323,19 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
-    /// let baud_rate = client.read_baud_rate()?;
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
+    /// let baud_rate = R4DCB08::read_baud_rate(&mut modbus_ctx)?;
     /// println!("Current baud rate: {}", baud_rate);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_baud_rate(&mut self) -> Result<proto::BaudRate> {
-        self.read_and_decode(
+    pub fn read_baud_rate(
+        ctx: &mut tokio_modbus::client::sync::Context,
+    ) -> Result<proto::BaudRate> {
+        Self::read_and_decode(
+            ctx,
             proto::BaudRate::ADDRESS,
             proto::BaudRate::QUANTITY,
             proto::BaudRate::decode_from_holding_registers,
@@ -455,24 +362,26 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// use r4dcb08_lib::protocol::BaudRate;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
     /// // Set the baud rate to 19200.
     /// let new_baud_rate = BaudRate::B19200; // Direct enum variant
     /// // Or from u16:
     /// // let new_baud_rate = BaudRate::try_from(19200)?;
     ///
-    /// client.set_baud_rate(new_baud_rate)?;
+    /// R4DCB08::set_baud_rate(&mut modbus_ctx, new_baud_rate)?;
     /// println!("Baud rate set to {}. Power cycle the device for changes to take effect.", new_baud_rate);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_baud_rate(&mut self, baud_rate: proto::BaudRate) -> Result<()> {
-        Self::map_tokio_result(self.ctx.write_single_register(
+    pub fn set_baud_rate(
+        ctx: &mut tokio_modbus::client::sync::Context,
+        baud_rate: proto::BaudRate,
+    ) -> Result<()> {
+        Self::map_tokio_result(ctx.write_single_register(
             proto::BaudRate::ADDRESS,
             baud_rate.encode_for_write_register(),
         ))
@@ -502,12 +411,11 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// # use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// # use r4dcb08_lib::tokio_sync::R4DCB08;
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// # let modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
-    /// # let mut client = R4DCB08::new(modbus_ctx);
+    /// # let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect("127.0.0.1:502".parse()?)?;
     /// println!("Attempting to send factory reset command...");
-    /// match client.factory_reset() {
+    /// match R4DCB08::factory_reset(&mut modbus_ctx) {
     ///     Ok(()) => println!("Factory reset command sent. Power cycle the device to complete."),
     ///     Err(e) => {
     ///         let ignore_error = if let r4dcb08_lib::tokio_common::Error::Modbus(tokio_modbus::Error::Transport(error)) = &e {
@@ -527,8 +435,8 @@ impl R4DCB08 {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn factory_reset(&mut self) -> Result<()> {
-        Self::map_tokio_result(self.ctx.write_single_register(
+    pub fn factory_reset(ctx: &mut tokio_modbus::client::sync::Context) -> Result<()> {
+        Self::map_tokio_result(ctx.write_single_register(
             proto::FactoryReset::ADDRESS,
             proto::FactoryReset::encode_for_write_register(),
         ))
@@ -558,7 +466,7 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// use r4dcb08_lib::tokio_sync::R4DCB08;
     /// use r4dcb08_lib::protocol::Address;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -571,15 +479,15 @@ impl R4DCB08 {
     /// // Assume only one device connected, use broadcast address for reading
     /// let slave = tokio_modbus::Slave(*Address::BROADCAST);
     /// let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(&builder, slave).expect("Failed to connect");
-    /// let mut client = R4DCB08::new(modbus_ctx);
     ///
-    /// let address = client.read_address()?;
+    /// let address = R4DCB08::read_address(&mut modbus_ctx)?;
     /// println!("Device responded with address: {}", address);
     /// # Ok(())
     /// # }
     /// ```
-    pub fn read_address(&mut self) -> Result<proto::Address> {
-        self.read_and_decode(
+    pub fn read_address(ctx: &mut tokio_modbus::client::sync::Context) -> Result<proto::Address> {
+        Self::read_and_decode(
+            ctx,
             proto::Address::ADDRESS,
             proto::Address::QUANTITY,
             proto::Address::decode_from_holding_registers,
@@ -609,7 +517,7 @@ impl R4DCB08 {
     /// # Examples
     ///
     /// ```no_run
-    /// use r4dcb08_lib::tokio_sync_client::R4DCB08;
+    /// use r4dcb08_lib::tokio_sync::R4DCB08;
     /// use r4dcb08_lib::protocol::Address;
     ///
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -624,20 +532,22 @@ impl R4DCB08 {
     ///
     /// let slave = tokio_modbus::Slave(*current_device_address);
     /// let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(&builder, slave).expect("Failed to connect");
-    /// let mut client = R4DCB08::new(modbus_ctx);
     ///
     /// // --- New address we want to set ---
     /// let new_device_address = Address::try_from(10)?;
     ///
     /// println!("Attempting to change device address from {} to {}...", current_device_address, new_device_address);
-    /// client.set_address(new_device_address)?;
+    /// R4DCB08::set_address(&mut modbus_ctx, new_device_address)?;
     /// println!("Device address successfully changed to {}.", new_device_address);
     /// println!("You will need to reconnect using the new address for further communication.");
     /// # Ok(())
     /// # }
     /// ```
-    pub fn set_address(&mut self, new_address: proto::Address) -> Result<()> {
-        Self::map_tokio_result(self.ctx.write_single_register(
+    pub fn set_address(
+        ctx: &mut tokio_modbus::client::sync::Context,
+        new_address: proto::Address,
+    ) -> Result<()> {
+        Self::map_tokio_result(ctx.write_single_register(
             proto::Address::ADDRESS,
             new_address.encode_for_write_register(),
         ))

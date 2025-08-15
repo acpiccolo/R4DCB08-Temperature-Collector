@@ -35,7 +35,7 @@ tokio = { version = "1", features = ["full"] }
 Then, use the client in your code:
 
 ```no_run
-use r4dcb08_lib::tokio_sync_client::R4DCB08;
+use r4dcb08_lib::tokio_sync_safe_client::SafeClient;
 use std::net::SocketAddr;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -43,10 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let socket_addr: SocketAddr = "192.168.1.100:502".parse()?;
 
     // Connect to the Modbus TCP device
-    let mut modbus_ctx = tokio_modbus::client::sync::tcp::connect(socket_addr)?;
+    let modbus_ctx = tokio_modbus::client::sync::tcp::connect(socket_addr)?;
 
-    // Create a new R4DCB08 client
-    let mut client = R4DCB08::new(modbus_ctx);
+    // Create a new SafeClient
+    let mut client = SafeClient::new(modbus_ctx);
 
     // Read temperatures from all 8 channels
     match client.read_temperatures() {
@@ -109,9 +109,22 @@ pub mod tokio_common;
     doc(cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")))
 )]
 /// Provides a synchronous, high-level client for interacting with the R4DCB08 module.
-pub mod tokio_sync_client;
+pub mod tokio_sync;
 
 #[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))))]
 /// Provides an asynchronous, high-level client for interacting with the R4DCB08 module.
-pub mod tokio_async_client;
+pub mod tokio_async;
+
+#[cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync"))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")))
+)]
+/// Provides a thread-safe synchronous client for interacting with the R4DCB08 module.
+pub mod tokio_sync_safe_client;
+
+#[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))))]
+/// Provides a thread-safe asynchronous client for interacting with the R4DCB08 module.
+pub mod tokio_async_safe_client;

@@ -1,88 +1,51 @@
-#![cfg_attr(docsrs, feature(doc_cfg))]
-/*!
-# R4DCB08 Modbus Library
+//! A library for controlling the R413D08 8-channel relay module via Modbus.
+//!
+//! This crate provides two main ways to interact with the R413D08 relay module:
+//!
+//! 1.  **High-Level, Safe Clients**: Stateful, thread-safe clients that are easy to share and use in concurrent applications. This is the recommended approach for most users. See [`tokio_sync_safe_client::SafeClient`] (blocking) and [`tokio_async_safe_client::SafeClient`] (`async`).
+//!
+//! 2.  **Low-Level, Stateless Functions**: A set of stateless functions that
+//!     directly map to the device's Modbus commands. This API offers maximum
+//!     flexibility but requires manual management of the Modbus context. See
+//!     the [`tokio_sync`] and [`tokio_async`] modules.
+//!
+//! ## Features
+//!
+//! - **Protocol Implementation**: Complete implementation of the R413D08 Modbus protocol.
+//! - **Stateful, Thread-Safe Clients**: For easy and safe concurrent use.
+//! - **Stateless, Low-Level Functions**: For maximum flexibility and control.
+//! - **Synchronous and Asynchronous APIs**: Both blocking and `async/await` APIs are available.
+//! - **Strongly-Typed API**: Utilizes Rust's type system for protocol correctness (e.g., `Port`, `Address`, `PortState`).
+//!
+//! ## Quick Start
+//!
+//! This example shows how to use the recommended high-level, synchronous `SafeClient`.
+//!
+//! ```no_run
+//! use r4dcb08_lib::{
+//!     protocol::Address,
+//!     tokio_sync_safe_client::SafeClient,
+//! };
+//! use tokio_modbus::client::sync::tcp;
+//! use tokio_modbus::Slave;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Connect to the device and create a stateful, safe client
+//!     let socket_addr = "192.168.1.100:502".parse()?;
+//!     let ctx = tcp::connect_slave(socket_addr, Slave(*Address::default()))?;
+//!     let mut client = SafeClient::new(ctx);
+//!
+//!     // Use the client to interact with the device
+//!     let temperatures = client.read_temperatures()?;
+//!
+//!     println!("Successfully read temperatures. Current values: {}", temperatures);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! For more details, see the documentation for the specific client you wish to use.
 
-A Rust library for interacting with the R4DCB08 8-channel temperature data acquisition module
-via the Modbus RTU and TCP protocols.
-
-This library provides a high-level API to abstract the underlying Modbus communication,
-allowing you to easily read temperature data and configure device parameters. It is built
-on top of the powerful `tokio-modbus` crate and leverages `tokio` for asynchronous
-operations.
-
-## Key Features
-
-- **High-Level API**: Simplifies interaction with the R4DCB08 module.
-- **Protocol Abstraction**: Handles the details of Modbus register mapping, data encoding,
-  and decoding as defined in the `protocol` module.
-- **Sync and Async Clients**: Offers both synchronous and asynchronous clients to fit
-  different application needs.
-- **RTU and TCP Support**: Communicate via serial (RTU) or network (TCP).
-- **Feature-Gated**: Compile only the features you need, keeping the library lean.
-
-## Usage Example
-
-The following example demonstrates how to use the synchronous TCP client to connect to an
-R4DCB08 module and read the temperatures from all 8 channels.
-
-First, add the following to your `Cargo.toml`:
-```toml
-[dependencies]
-r4dcb08_lib = { version = "0.2", features = ["tokio-tcp-sync"] }
-tokio = { version = "1", features = ["full"] }
-```
-
-Then, use the client in your code:
-
-```no_run
-use r4dcb08_lib::tokio_sync_safe_client::SafeClient;
-use std::net::SocketAddr;
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // The IP address and port of the R4DCB08 module
-    let socket_addr: SocketAddr = "192.168.1.100:502".parse()?;
-
-    // Connect to the Modbus TCP device
-    let modbus_ctx = tokio_modbus::client::sync::tcp::connect(socket_addr)?;
-
-    // Create a new SafeClient
-    let mut client = SafeClient::new(modbus_ctx);
-
-    // Read temperatures from all 8 channels
-    match client.read_temperatures() {
-        Ok(temperatures) => {
-            println!("Successfully read temperatures:");
-            for (i, temp) in temperatures.iter().enumerate() {
-                // The Temperature type implements Display for easy printing
-                println!("  Channel {}: {}", i, temp);
-            }
-        }
-        Err(e) => {
-            eprintln!("Failed to read temperatures: {}", e);
-        }
-    }
-
-    Ok(())
-}
-```
-
-## Features
-
-This crate uses feature flags to control which client implementations are included.
-This helps to minimize the number of dependencies and reduce compile times.
-
-| Feature          | Description                                                              |
-|------------------|--------------------------------------------------------------------------|
-| `tokio-rtu-sync` | Enables the synchronous client for Modbus RTU (serial) communication.    |
-| `tokio-tcp-sync` | Enables the synchronous client for Modbus TCP (network) communication.   |
-| `tokio-rtu`      | Enables the asynchronous client for Modbus RTU (serial) communication.   |
-| `tokio-tcp`      | Enables the asynchronous client for Modbus TCP (network) communication.  |
-| `serde`          | Enables serialization/deserialization for `protocol` data structures via `serde`. |
-
-By default, `tokio-rtu-sync` and `tokio-rtu` are enabled.
-*/
-
-/// Defines data structures, constants, and protocol-level logic for the R4DCB08 module.
 pub mod protocol;
 
 #[cfg(any(
@@ -91,40 +54,26 @@ pub mod protocol;
     feature = "tokio-rtu",
     feature = "tokio-tcp"
 ))]
-#[cfg_attr(
-    docsrs,
-    doc(cfg(any(
-        feature = "tokio-rtu-sync",
-        feature = "tokio-tcp-sync",
-        feature = "tokio-rtu",
-        feature = "tokio-tcp"
-    )))
-)]
-/// Common error types and utilities for Tokio-based clients.
 pub mod tokio_common;
 
-#[cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync"))]
 #[cfg_attr(
     docsrs,
     doc(cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")))
 )]
-/// Provides a synchronous, high-level client for interacting with the R4DCB08 module.
+#[cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync"))]
 pub mod tokio_sync;
 
-#[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))))]
-/// Provides an asynchronous, high-level client for interacting with the R4DCB08 module.
+#[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
 pub mod tokio_async;
 
-#[cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync"))]
 #[cfg_attr(
     docsrs,
     doc(cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")))
 )]
-/// Provides a thread-safe synchronous client for interacting with the R4DCB08 module.
+#[cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync"))]
 pub mod tokio_sync_safe_client;
 
-#[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))))]
-/// Provides a thread-safe asynchronous client for interacting with the R4DCB08 module.
+#[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
 pub mod tokio_async_safe_client;

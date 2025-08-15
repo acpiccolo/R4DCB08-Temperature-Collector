@@ -21,10 +21,9 @@ use clap::Parser;
 use dialoguer::Confirm;
 use flexi_logger::{Logger, LoggerHandle};
 use log::*;
-use r4dcb08_lib::{protocol as proto, tokio_sync::R4DCB08};
+use r4dcb08_lib::{protocol as proto, tokio_sync_safe_client::SafeClient};
 use std::io::{stdout, Write};
 use std::{panic, time::Duration};
-use tokio_modbus::client::sync::Context as ModbusContext;
 
 mod commandline;
 mod mqtt;
@@ -63,30 +62,34 @@ fn logging_init(loglevel: LevelFilter) -> LoggerHandle {
 }
 
 macro_rules! print_temperature {
-    ($modbus_ctx:expr) => {
-        let temperatures =
-            R4DCB08::read_temperatures($modbus_ctx).with_context(|| "Cannot read temperatures")?;
+    ($client:expr) => {
+        let temperatures = $client
+            .read_temperatures()
+            .with_context(|| "Cannot read temperatures")?;
         println!("Temperatures (°C): {}", temperatures)
     };
 }
 
 macro_rules! print_temperature_correction {
-    ($modbus_ctx:expr) => {
-        let corrections = R4DCB08::read_temperature_correction($modbus_ctx)
+    ($client:expr) => {
+        let corrections = $client
+            .read_temperature_correction()
             .with_context(|| "Cannot read temperature corrections")?;
         println!("Temperature corrections (°C): {}", corrections);
     };
 }
 macro_rules! print_baud_rate {
-    ($modbus_ctx:expr) => {
-        let baud_rate =
-            R4DCB08::read_baud_rate($modbus_ctx).with_context(|| "Cannot read baud rate")?;
+    ($client:expr) => {
+        let baud_rate = $client
+            .read_baud_rate()
+            .with_context(|| "Cannot read baud rate")?;
         println!("Baud rate: {}", baud_rate);
     };
 }
 macro_rules! print_automatic_report {
-    ($modbus_ctx:expr) => {
-        let rsp = R4DCB08::read_automatic_report($modbus_ctx)
+    ($client:expr) => {
+        let rsp = $client
+            .read_automatic_report()
             .with_context(|| "Cannot read automatic report")?;
         println!("Automatic report in seconds (0 means disabled): {}", *rsp);
     };
@@ -134,16 +137,16 @@ fn rtu_scan(
     baud_rate: &proto::BaudRate,
     timeout: Duration,
 ) -> Result<proto::Address> {
-    let mut modbus_ctx = tokio_modbus::client::sync::rtu::connect_slave(
+    let mut ctx = tokio_modbus::client::sync::rtu::connect_slave(
         &r4dcb08_lib::tokio_common::serial_port_builder(device_name, baud_rate),
         tokio_modbus::Slave(*proto::Address::BROADCAST),
     )
     .with_context(|| {
         format!("Cannot open serial port {device_name} for scanning at baud {baud_rate}")
     })?;
-    modbus_ctx.set_timeout(Some(timeout));
-
-    R4DCB08::read_address(&mut modbus_ctx).with_context(|| "Cannot read address")
+    ctx.set_timeout(timeout);
+    let mut client = SafeClient::new(ctx);
+    client.read_address().with_context(|| "Cannot read address")
 }
 
 /// Prompts the user for confirmation when an operation requires only one module on the bus.
@@ -213,11 +216,12 @@ fn handle_rtu_scan(
 }
 
 /// Creates a new R4DCB08 client based on the provided command-line arguments.
-fn create_modbus_context<'a>(
+fn create_safe_client<'a>(
     connection: &'a commandline::CliConnection,
     delay: &mut Duration,
-) -> Result<(ModbusContext, &'a commandline::CliCommands)> {
-    let (modbus_ctx, command_to_execute) = match connection {
+    timeout: Duration,
+) -> Result<(SafeClient, &'a commandline::CliCommands)> {
+    let (mut ctx, command_to_execute) = match connection {
         commandline::CliConnection::Tcp {
             address: tcp_address_str,
             command,
@@ -226,11 +230,12 @@ fn create_modbus_context<'a>(
                 .parse()
                 .with_context(|| format!("Invalid TCP address format: '{tcp_address_str}'"))?;
             info!("Attempting to connect via TCP to {socket_addr}...");
-            let modbus_ctx =
+            (
                 tokio_modbus::client::sync::tcp::connect(socket_addr).with_context(|| {
                     format!("Failed to connect to Modbus TCP device at {socket_addr}")
-                })?;
-            (modbus_ctx, command)
+                })?,
+                command,
+            )
         }
         commandline::CliConnection::Rtu {
             device,
@@ -271,14 +276,15 @@ fn create_modbus_context<'a>(
             unreachable!("RtuScan should be handled earlier.")
         }
     };
-    Ok((modbus_ctx, command_to_execute))
+    ctx.set_timeout(timeout);
+    Ok((SafeClient::new(ctx), command_to_execute))
 }
 
 /// Handles the factory reset command.
 ///
 /// This function prompts the user for confirmation, verifies the connection to the device,
 /// and then sends the factory reset command.
-fn handle_factory_reset(modbus_ctx: &mut ModbusContext, delay: Duration) -> Result<()> {
+fn handle_factory_reset(client: &mut SafeClient, delay: Duration) -> Result<()> {
     info!("Executing: Factory Reset");
     println!(
         "WARNING: This will reset the R4DCB08 module to its factory default settings:\n\
@@ -308,7 +314,7 @@ fn handle_factory_reset(modbus_ctx: &mut ModbusContext, delay: Duration) -> Resu
     print!("Verifying current connection to device before reset... ");
     stdout().flush().context("Failed to flush stdout")?;
 
-    match R4DCB08::read_temperatures(modbus_ctx) {
+    match client.read_temperatures() {
         Ok(_) => {
             println!("connection OK.");
         }
@@ -321,7 +327,7 @@ fn handle_factory_reset(modbus_ctx: &mut ModbusContext, delay: Duration) -> Resu
     std::thread::sleep(delay);
 
     info!("Sending factory reset command...");
-    if let Err(error) = R4DCB08::factory_reset(modbus_ctx) {
+    if let Err(error) = client.factory_reset() {
         let ignore_error = if let r4dcb08_lib::tokio_common::Error::Modbus(
             tokio_modbus::Error::Transport(error),
         ) = &error
@@ -370,8 +376,8 @@ fn main() -> Result<()> {
 
     // 3. Setup for regular TCP/RTU commands
     let mut delay = args.delay;
-    let (mut modbus_ctx, command_to_execute) = create_modbus_context(&args.connection, &mut delay)?;
-    modbus_ctx.set_timeout(Some(args.timeout));
+    let (mut client, command_to_execute) =
+        create_safe_client(&args.connection, &mut delay, args.timeout)?;
 
     // 4. Execute the command
     match command_to_execute {
@@ -383,58 +389,62 @@ fn main() -> Result<()> {
             match output {
                 commandline::DaemonOutput::Console => loop {
                     debug!("Daemon: Reading temperatures for stdout...");
-                    print_temperature!(&mut modbus_ctx);
+                    print_temperature!(&mut client);
                     std::thread::sleep(delay.max(*poll_interval));
                 },
                 commandline::DaemonOutput::Mqtt { config_file } => {
-                    mqtt::run_daemon(&mut modbus_ctx, &delay, poll_interval, config_file)?;
+                    mqtt::run_daemon(&mut client, &delay, poll_interval, config_file)?;
                 }
             }
         }
         commandline::CliCommands::Read => {
             info!("Executing: Read Temperatures");
-            print_temperature!(&mut modbus_ctx);
+            print_temperature!(&mut client);
         }
         commandline::CliCommands::ReadCorrection => {
             info!("Executing: Read Temperature Corrections");
-            print_temperature_correction!(&mut modbus_ctx);
+            print_temperature_correction!(&mut client);
         }
         commandline::CliCommands::ReadBaudRate => {
             info!("Executing: Read Baud Rate");
-            print_baud_rate!(&mut modbus_ctx);
+            print_baud_rate!(&mut client);
         }
         commandline::CliCommands::ReadAutomaticReport => {
             info!("Executing: Read Automatic Report Interval");
-            print_automatic_report!(&mut modbus_ctx);
+            print_automatic_report!(&mut client);
         }
         commandline::CliCommands::ReadAll => {
             info!("Executing: Read All Device Values");
-            print_temperature!(&mut modbus_ctx);
+            print_temperature!(&mut client);
             std::thread::sleep(delay);
-            print_temperature_correction!(&mut modbus_ctx);
+            print_temperature_correction!(&mut client);
             std::thread::sleep(delay);
-            print_baud_rate!(&mut modbus_ctx);
+            print_baud_rate!(&mut client);
             std::thread::sleep(delay);
-            print_automatic_report!(&mut modbus_ctx);
+            print_automatic_report!(&mut client);
         }
         commandline::CliCommands::QueryAddress => {
             info!("Executing: Query Device Address (Broadcast)");
-            let address = R4DCB08::read_address(&mut modbus_ctx)
+            let address = client
+                .read_address()
                 .with_context(|| "Cannot read RS485 address")?;
             println!("RS485 address: {address}");
         }
         commandline::CliCommands::SetCorrection { channel, value } => {
             info!("Executing: Set Temperature Correction for Channel {channel} to {value} °C");
-            R4DCB08::set_temperature_correction(&mut modbus_ctx, *channel, *value).with_context(
-                || format!("Failed to set temperature correction for channel {channel} to {value}"),
-            )?;
+            client
+                .set_temperature_correction(*channel, *value)
+                .with_context(|| {
+                    format!("Failed to set temperature correction for channel {channel} to {value}")
+                })?;
             println!(
                 "Temperature correction for channel {channel} set to {value} °C successfully."
             );
         }
         commandline::CliCommands::SetBaudRate { new_baud_rate } => {
             info!("Executing: Set Baud Rate to {new_baud_rate}");
-            R4DCB08::set_baud_rate(&mut modbus_ctx, *new_baud_rate)
+            client
+                .set_baud_rate(*new_baud_rate)
                 .with_context(|| format!("Failed to set baud rate to {new_baud_rate}"))?;
             println!(
                 "Baud rate set to {new_baud_rate}. Important: Power cycle the device for this change to take effect!"
@@ -444,7 +454,8 @@ fn main() -> Result<()> {
             address: new_address,
         } => {
             info!("Executing: Set Device Address to {new_address}");
-            R4DCB08::set_address(&mut modbus_ctx, *new_address)
+            client
+                .set_address(*new_address)
                 .with_context(|| format!("Failed to set new RS485 address to {new_address}"))?;
             println!(
                 "Device address successfully set to {new_address}. Subsequent communication must use this new address."
@@ -455,7 +466,7 @@ fn main() -> Result<()> {
                 "Executing: Set Automatic Report Interval to {} seconds",
                 report_time.as_secs()
             );
-            R4DCB08::set_automatic_report(&mut modbus_ctx, *report_time).with_context(|| {
+            client.set_automatic_report(*report_time).with_context(|| {
                 format!(
                     "Failed to set automatic report interval to {}s",
                     report_time.as_secs()
@@ -471,7 +482,7 @@ fn main() -> Result<()> {
             }
         }
         commandline::CliCommands::FactoryReset => {
-            handle_factory_reset(&mut modbus_ctx, delay)?;
+            handle_factory_reset(&mut client, delay)?;
         }
     }
 

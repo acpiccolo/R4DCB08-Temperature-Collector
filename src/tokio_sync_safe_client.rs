@@ -7,7 +7,6 @@
 
 use crate::{protocol as proto, tokio_common::Result, tokio_sync};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tokio_modbus::client::sync::Context;
 
 /// Synchronous client for interacting with the R4DCB08 temperature module over Modbus.
@@ -35,16 +34,6 @@ impl SafeClient {
     /// Clones the shared `tokio-modbus` synchronous context.
     pub fn clone_shared(&self) -> Arc<Mutex<Context>> {
         self.ctx.clone()
-    }
-
-    /// Sets the timeout for subsequent Modbus read/write operations.
-    pub fn set_timeout(&mut self, timeout: impl Into<Option<Duration>>) {
-        self.ctx.lock().unwrap().set_timeout(timeout.into());
-    }
-
-    /// Retrieves the currently configured timeout for Modbus operations.
-    pub fn timeout(&self) -> Option<Duration> {
-        self.ctx.lock().unwrap().timeout()
     }
 
     /// Reads the current temperatures from all 8 available channels in degrees Celsius (°C).

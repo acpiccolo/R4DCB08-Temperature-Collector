@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder};
 use serde::Deserialize;
 use std::time::Duration;
+use tokio_modbus::client::sync::Context as ModbusContext;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MqttConfig {
@@ -131,7 +132,7 @@ impl MqttConfig {
 }
 
 pub fn run_daemon(
-    d: &mut r4dcb08_lib::tokio_sync_client::R4DCB08,
+    modbus_ctx: &mut ModbusContext,
     delay: &Duration,
     poll_interval: &Duration,
     config_file: &str,
@@ -141,7 +142,7 @@ pub fn run_daemon(
 
     loop {
         log::debug!("Daemon: Reading temperatures for MQTT publishing...");
-        match d.read_temperatures() {
+        match r4dcb08_lib::tokio_sync::R4DCB08::read_temperatures(modbus_ctx) {
             Ok(temperatures) => {
                 log::trace!("Temperatures read: {temperatures:?}");
                 for (ch_idx, temp_val) in temperatures.iter().enumerate() {

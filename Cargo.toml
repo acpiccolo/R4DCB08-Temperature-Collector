@@ -16,8 +16,9 @@ path = "src/main.rs"
 required-features = ["bin-dependencies"]
 
 [features]
-default = ["tokio-rtu-sync", "tokio-rtu", "bin-dependencies"]
+default = ["bin-dependencies"]
 bin-dependencies = [
+    "safe-client-sync",
     "dep:anyhow",
     "dep:log",
     "dep:tokio-serial",
@@ -36,9 +37,11 @@ bin-dependencies = [
 ]
 tokio-rtu-sync = ["tokio-modbus/rtu-sync", "dep:tokio-serial"]
 tokio-rtu = ["tokio-modbus/rtu", "dep:tokio-serial"]
-tokio-tcp-sync = ["tokio/net", "tokio-modbus/tcp-sync"]
-tokio-tcp = ["tokio/net", "tokio-modbus/tcp"]
+tokio-tcp-sync = ["tokio/net", "tokio-modbus/tcp-sync", "dep:tokio-serial"]
+tokio-tcp = ["tokio/net", "tokio-modbus/tcp", "dep:tokio-serial"]
 serde = ["serde/derive"]
+safe-client-sync = ["tokio/sync"]
+safe-client-async = ["tokio/sync"]
 
 [dependencies]
 thiserror = "2"

@@ -19,6 +19,9 @@ required-features = ["bin-dependencies"]
 default = ["bin-dependencies"]
 bin-dependencies = [
     "safe-client-sync",
+    "serde",
+    "tokio-rtu-sync",
+    "tokio-tcp-sync",
     "dep:anyhow",
     "dep:log",
     "dep:tokio-serial",
@@ -28,11 +31,8 @@ bin-dependencies = [
     "dep:dialoguer",
     "dep:humantime",
     "dep:paho-mqtt",
-    "tokio-rtu-sync",
-    "tokio-tcp-sync",
     "clap/derive",
-    "serde",
-    "dep:rand",
+    "rand",
     "dep:humantime-serde",
 ]
 tokio-rtu-sync = ["tokio-modbus/rtu-sync", "dep:tokio-serial"]

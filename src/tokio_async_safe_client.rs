@@ -6,11 +6,37 @@
 //! the raw Modbus register values.
 //!
 //! All client methods are `async` and must be `.await`ed.
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use r4dcb08_lib::{
+//!     protocol::Address,
+//!     tokio_async_safe_client::SafeClient,
+//! };
+//! use tokio_modbus::client::tcp;
+//! use tokio_modbus::Slave;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Connect to the device and create a stateful, safe client
+//!     let socket_addr = "192.168.1.100:502".parse()?;
+//!     let ctx = tcp::connect_slave(socket_addr, Slave(*Address::default())).await?;
+//!     let client = SafeClient::new(ctx);
+//!
+//!     // Use the client to interact with the device
+//!     let temperatures = client.read_temperatures().await?;
+//!
+//!     println!("Successfully read temperatures. Current values: {}", temperatures);
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use crate::{protocol as proto, tokio_async, tokio_common::Result};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio_modbus::client::Context;
+use tokio_modbus::{client::Context, prelude::*};
 
 /// Asynchronous client for interacting with the R4DCB08 temperature module over Modbus.
 ///
@@ -100,8 +126,14 @@ impl SafeClient {
     }
 
     /// Sets a new Modbus device address.
+    ///
+    /// A successful call makes the existing `Context` invalid (as it
+    /// still points to the old address). This function automatically
+    /// updates the slave ID within its managed `Context`.
     pub async fn set_address(&self, new_address: proto::Address) -> Result<()> {
         let mut ctx = self.ctx.lock().await;
-        tokio_async::R4DCB08::set_address(&mut ctx, new_address).await
+        tokio_async::R4DCB08::set_address(&mut ctx, new_address).await?;
+        ctx.set_slave(Slave(*new_address));
+        Ok(())
     }
 }

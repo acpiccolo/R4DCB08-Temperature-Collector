@@ -12,7 +12,8 @@ This Rust project enables communication with an **R4DCB08 temperature collector*
 - [Hardware Requirements](#hardware-requirements)
 - [Technical Specifications](#technical-specifications-r4dcb08)
 - [Installation & Compilation](#installation--compilation)
-- [Usage](#usage)
+- [Library Usage](#library-usage)
+- [Command-Line Usage](#command-line-usage)
 - [Cargo Features](#cargo-features)
 - [License](#license)
 
@@ -67,7 +68,51 @@ Ensure you have the following dependencies installed before proceeding:
    ```
    This installs `tempcol` to `$HOME/.cargo/bin`, making it accessible from anywhere.
 
-## Usage
+## Library Usage
+
+This project can also be used as a library in your own Rust applications. It provides a high-level, thread-safe `SafeClient` for easy interaction with the R4DCB08 module, available in both synchronous and asynchronous versions.
+
+### Adding the Dependency
+
+To use the library, add the following to your `Cargo.toml`. Note that since the crate is not on `crates.io`, you must install it from the git repository.
+
+```toml
+[dependencies]
+r4dcb08_lib = { git = "https://github.com/acpiccolo/R4DCB08-Temperature-Collector.git", tag = "v0.2.1" }
+tokio-modbus = "0.16.1"
+tokio = { version = "1", features = ["full"] }
+```
+
+### Quick Start: Synchronous Client
+
+Here's a quick example of how to use the synchronous `SafeClient` to read temperatures over a TCP connection:
+
+```rust
+use r4dcb08_lib::{
+    protocol::Address,
+    tokio_sync_safe_client::SafeClient,
+};
+use tokio_modbus::client::sync::tcp;
+use tokio_modbus::Slave;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Connect to the device and create a stateful, safe client
+    let socket_addr = "192.168.1.100:502".parse()?;
+    let ctx = tcp::connect_slave(socket_addr, Slave(*Address::default()))?;
+    let mut client = SafeClient::new(ctx);
+
+    // Use the client to interact with the device
+    let temperatures = client.read_temperatures()?;
+
+    println!("Successfully read temperatures. Current values: {}", temperatures);
+
+    Ok(())
+}
+```
+
+For asynchronous examples and low-level functions, please refer to the full library documentation.
+
+## Command-Line Usage
 
 This tool provides a range of commands for device discovery, configuration, and data acquisition.
 
@@ -231,11 +276,13 @@ qos: 1
 ## Cargo Features
 | Feature | Purpose | Default |
 | :--- | :------ | :-----: |
-| `tokio-rtu-sync` | Enable support for synchronous tokio RTU client | ✅ |
-| `tokio-rtu` | Enable support for asynchronous tokio RTU client | ✅ |
+| `bin-dependencies` | Enable all features required by the binary | ✅ |
+| `tokio-rtu-sync` | Enable support for synchronous tokio RTU client | - |
+| `tokio-rtu` | Enable support for asynchronous tokio RTU client | - |
 | `tokio-tcp-sync` | Enable support synchronous tokio TCP client | - |
 | `tokio-tcp` | Enable support asynchronous tokio TCP client | - |
-| `bin-dependencies` | Enable all features required by the binary | ✅ |
+| `safe-client-sync` | Enable the implementation for the stateful thread-safe synchronous client | - |
+| `safe-client-async` | Enable the implementation for the stateful thread-safe asynchronous client | - |
 | `serde` | Enable the serde framework for protocol structures | - |
 
 ## License

@@ -4,10 +4,35 @@
 //! the R4DCB08 8-channel temperature module using Modbus RTU or TCP. It handles
 //! the conversion between Rust types defined in the `crate::protocol` module and
 //! the raw Modbus register values.
+//!
+//! ## Example
+//!
+//! ```no_run
+//! use r4dcb08_lib::{
+//!     protocol::Address,
+//!     tokio_sync_safe_client::SafeClient,
+//! };
+//! use tokio_modbus::client::sync::tcp;
+//! use tokio_modbus::Slave;
+//!
+//! fn main() -> Result<(), Box<dyn std::error::Error>> {
+//!     // Connect to the device and create a stateful, safe client
+//!     let socket_addr = "192.168.1.100:502".parse()?;
+//!     let ctx = tcp::connect_slave(socket_addr, Slave(*Address::default()))?;
+//!     let mut client = SafeClient::new(ctx);
+//!
+//!     // Use the client to interact with the device
+//!     let temperatures = client.read_temperatures()?;
+//!
+//!     println!("Successfully read temperatures. Current values: {}", temperatures);
+//!
+//!     Ok(())
+//! }
+//! ```
 
 use crate::{protocol as proto, tokio_common::Result, tokio_sync};
 use std::sync::{Arc, Mutex};
-use tokio_modbus::client::sync::Context;
+use tokio_modbus::{client::sync::Context, slave::SlaveContext, Slave};
 
 /// Synchronous client for interacting with the R4DCB08 temperature module over Modbus.
 ///
@@ -95,8 +120,14 @@ impl SafeClient {
     }
 
     /// Sets a new Modbus device address.
+    ///
+    /// A successful call makes the existing `Context` invalid (as it
+    /// still points to the old address). This function automatically
+    /// updates the slave ID within its managed `Context`.
     pub fn set_address(&mut self, new_address: proto::Address) -> Result<()> {
         let mut ctx = self.ctx.lock().unwrap();
-        tokio_sync::R4DCB08::set_address(&mut ctx, new_address)
+        tokio_sync::R4DCB08::set_address(&mut ctx, new_address)?;
+        ctx.set_slave(Slave(*new_address));
+        Ok(())
     }
 }

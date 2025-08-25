@@ -69,11 +69,26 @@ pub mod tokio_async;
 
 #[cfg_attr(
     docsrs,
-    doc(cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")))
+    doc(cfg(all(
+        feature = "safe-client-sync",
+        any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")
+    )))
 )]
-#[cfg(any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync"))]
+#[cfg(all(
+    feature = "safe-client-sync",
+    any(feature = "tokio-rtu-sync", feature = "tokio-tcp-sync")
+))]
 pub mod tokio_sync_safe_client;
 
-#[cfg_attr(docsrs, doc(cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))))]
-#[cfg(any(feature = "tokio-rtu", feature = "tokio-tcp"))]
+#[cfg_attr(
+    docsrs,
+    doc(cfg(all(
+        feature = "safe-client-async",
+        any(feature = "tokio-rtu", feature = "tokio-tcp")
+    )))
+)]
+#[cfg(all(
+    feature = "safe-client-async",
+    any(feature = "tokio-rtu", feature = "tokio-tcp")
+))]
 pub mod tokio_async_safe_client;

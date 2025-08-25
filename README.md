@@ -74,14 +74,22 @@ This project can also be used as a library in your own Rust applications. It pro
 
 ### Adding the Dependency
 
-To use the library, add the following to your `Cargo.toml`. Note that since the crate is not on `crates.io`, you must install it from the git repository.
+To use the library, add it to your `Cargo.toml`. The crate is available on [crates.io](https://crates.io/crates/R4DCB08).
+
+You can specify the features you need. For example, to enable the synchronous TCP client and `serde` support:
 
 ```toml
 [dependencies]
-r4dcb08_lib = { git = "https://github.com/acpiccolo/R4DCB08-Temperature-Collector.git", tag = "v0.2.1" }
+R4DCB08 = {
+    version = "0.2.1",
+    default-features = false, # Disable the default (binary) features
+    features = ["tokio-tcp-sync", "safe-client-sync", "serde"]
+}
 tokio-modbus = "0.16.1"
 tokio = { version = "1", features = ["full"] }
 ```
+
+By setting `default-features = false`, you ensure that only the features you explicitly list are enabled, keeping your dependency tree minimal.
 
 ### Quick Start: Synchronous Client
 
@@ -274,16 +282,29 @@ qos: 1
 ```
 
 ## Cargo Features
-| Feature | Purpose | Default |
-| :--- | :------ | :-----: |
-| `bin-dependencies` | Enable all features required by the binary | ✅ |
-| `tokio-rtu-sync` | Enable support for synchronous tokio RTU client | - |
-| `tokio-rtu` | Enable support for asynchronous tokio RTU client | - |
-| `tokio-tcp-sync` | Enable support synchronous tokio TCP client | - |
-| `tokio-tcp` | Enable support asynchronous tokio TCP client | - |
-| `safe-client-sync` | Enable the implementation for the stateful thread-safe synchronous client | - |
-| `safe-client-async` | Enable the implementation for the stateful thread-safe asynchronous client | - |
-| `serde` | Enable the serde framework for protocol structures | - |
+
+This crate uses a feature-based system to allow you to select the specific components you need, minimizing dependencies and compile times.
+
+### For Binary Users
+
+If you are using the `tempcol` command-line tool, no action is needed. The binary is compiled with the `default` feature, which automatically enables all necessary functionalities for both RTU and TCP communication.
+
+### For Library Users
+
+If you are using this project as a library, you can customize your build by enabling only the features you require. This is ideal for optimizing your application's footprint.
+
+Below is a detailed breakdown of the available features:
+
+| Feature             | Description                                                                                                                                  | Default for Library | Default for Binary |
+|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------|:-------------------:|:------------------:|
+| **`bin-dependencies`**  | Enables all features required to build the `tempcol` binary, including CLI parsing, logging, and both RTU/TCP clients.                      |                     |         ✅         |
+| **`tokio-rtu-sync`**    | **Synchronous RTU Client:** Enables the `tokio-modbus` RTU client for synchronous (blocking) serial communication.                           |                     |         ✅         |
+| **`tokio-rtu`**         | **Asynchronous RTU Client:** Enables the `tokio-modbus` RTU client for asynchronous (non-blocking) serial communication.                     |                     |                    |
+| **`tokio-tcp-sync`**    | **Synchronous TCP Client:** Enables the `tokio-modbus` TCP client for synchronous (blocking) network communication.                          |                     |         ✅         |
+| **`tokio-tcp`**         | **Asynchronous TCP Client:** Enables the `tokio-modbus` TCP client for asynchronous (non-blocking) network communication.                      |                     |                    |
+| **`safe-client-sync`**  | **Stateful Synchronous Client:** Provides a thread-safe, stateful wrapper for easy synchronous interaction with the device.                 |                     |         ✅         |
+| **`safe-client-async`** | **Stateful Asynchronous Client:** Provides a thread-safe, stateful wrapper for easy asynchronous interaction with the device.                |                     |                    |
+| **`serde`**             | **Serialization:** Implements `serde::Serialize` and `serde::Deserialize` for all protocol-related structs, useful for data exchange.      |                     |         ✅         |
 
 ## License
 Licensed under either of:

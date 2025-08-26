@@ -72,28 +72,20 @@ Ensure you have the following dependencies installed before proceeding:
 
 This project can also be used as a library in your own Rust applications. It provides a high-level, thread-safe `SafeClient` for easy interaction with the R4DCB08 module, available in both synchronous and asynchronous versions.
 
-### Adding the Dependency
-
-To use the library, add it to your `Cargo.toml`. The crate is available on [crates.io](https://crates.io/crates/R4DCB08).
-
-You can specify the features you need. For example, to enable the synchronous TCP client and `serde` support:
-
-```toml
-[dependencies]
-R4DCB08 = {
-    version = "0.2.1",
-    default-features = false, # Disable the default (binary) features
-    features = ["tokio-tcp-sync", "safe-client-sync", "serde"]
-}
-tokio-modbus = "0.16.1"
-tokio = { version = "1", features = ["full"] }
-```
-
-By setting `default-features = false`, you ensure that only the features you explicitly list are enabled, keeping your dependency tree minimal.
-
 ### Quick Start: Synchronous Client
 
-Here's a quick example of how to use the synchronous `SafeClient` to read temperatures over a TCP connection:
+Here's a quick example of how to use the synchronous `SafeClient` to read temperatures over a TCP connection.
+
+#### Dependencies
+
+First, add the required dependencies to your project:
+```sh
+cargo add R4DCB08@0.3 --no-default-features --features "tokio-tcp-sync,safe-client-sync,serde"
+cargo add tokio-modbus@0.16
+cargo add tokio@1 --features full
+```
+
+#### Example Usage
 
 ```rust
 use r4dcb08_lib::{
@@ -283,28 +275,23 @@ qos: 1
 
 ## Cargo Features
 
-This crate uses a feature-based system to allow you to select the specific components you need, minimizing dependencies and compile times.
+This crate uses a feature-based system to minimize dependencies. When using it as a library, you should disable default features and select only the components you need.
 
-### For Binary Users
+- **`default`**: Enables `bin-dependencies`, intended for compiling the `tempcol` command-line tool.
 
-If you are using the `tempcol` command-line tool, no action is needed. The binary is compiled with the `default` feature, which automatically enables all necessary functionalities for both RTU and TCP communication.
+### Client Features
+- **`tokio-rtu-sync`**: Synchronous (blocking) RTU client.
+- **`tokio-tcp-sync`**: Synchronous (blocking) TCP client.
+- **`tokio-rtu`**: Asynchronous (non-blocking) RTU client.
+- **`tokio-tcp`**: Asynchronous (non-blocking) TCP client.
 
-### For Library Users
+### High-Level Wrappers
+- **`safe-client-sync`**: A thread-safe, stateful wrapper for synchronous clients.
+- **`safe-client-async`**: A thread-safe, stateful wrapper for asynchronous clients.
 
-If you are using this project as a library, you can customize your build by enabling only the features you require. This is ideal for optimizing your application's footprint.
-
-Below is a detailed breakdown of the available features:
-
-| Feature             | Description                                                                                                                                  | Default for Library | Default for Binary |
-|---------------------|----------------------------------------------------------------------------------------------------------------------------------------------|:-------------------:|:------------------:|
-| **`bin-dependencies`**  | Enables all features required to build the `tempcol` binary, including CLI parsing, logging, and both RTU/TCP clients.                      |                     |         ✅         |
-| **`tokio-rtu-sync`**    | **Synchronous RTU Client:** Enables the `tokio-modbus` RTU client for synchronous (blocking) serial communication.                           |                     |         ✅         |
-| **`tokio-rtu`**         | **Asynchronous RTU Client:** Enables the `tokio-modbus` RTU client for asynchronous (non-blocking) serial communication.                     |                     |                    |
-| **`tokio-tcp-sync`**    | **Synchronous TCP Client:** Enables the `tokio-modbus` TCP client for synchronous (blocking) network communication.                          |                     |         ✅         |
-| **`tokio-tcp`**         | **Asynchronous TCP Client:** Enables the `tokio-modbus` TCP client for asynchronous (non-blocking) network communication.                      |                     |                    |
-| **`safe-client-sync`**  | **Stateful Synchronous Client:** Provides a thread-safe, stateful wrapper for easy synchronous interaction with the device.                 |                     |         ✅         |
-| **`safe-client-async`** | **Stateful Asynchronous Client:** Provides a thread-safe, stateful wrapper for easy asynchronous interaction with the device.                |                     |                    |
-| **`serde`**             | **Serialization:** Implements `serde::Serialize` and `serde::Deserialize` for all protocol-related structs, useful for data exchange.      |                     |         ✅         |
+### Utility Features
+- **`serde`**: Implements `serde::Serialize` and `serde::Deserialize` for protocol structs.
+- **`bin-dependencies`**: All features required to build the `tempcol` binary.
 
 ## License
 Licensed under either of:

@@ -10,6 +10,7 @@ This Rust project enables communication with an **R4DCB08 temperature collector*
 
 ## Table of Contents
 - [Hardware Requirements](#hardware-requirements)
+- [Technical Documentation](#technical-documentation)
 - [Technical Specifications](#technical-specifications-r4dcb08)
 - [Installation & Compilation](#installation--compilation)
 - [Command-Line Usage](#command-line-usage)

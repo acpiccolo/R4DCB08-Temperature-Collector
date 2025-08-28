@@ -69,3 +69,7 @@ assert_matches = "1"
 
 [package.metadata.cargo-machete]
 ignored = ["tokio", "humantime-serde"]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]

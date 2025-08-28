@@ -1,3 +1,4 @@
+#![cfg_attr(docsrs, feature(doc_cfg))]
 //! A library for controlling the R413D08 8-channel relay module via Modbus.
 //!
 //! This crate provides two main ways to interact with the R413D08 relay module:

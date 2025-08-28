@@ -10,13 +10,44 @@
 //!     flexibility but requires manual management of the Modbus context. See
 //!     the [`tokio_sync`] and [`tokio_async`] modules.
 //!
-//! ## Features
+//! ## Key Features
 //!
 //! - **Protocol Implementation**: Complete implementation of the R413D08 Modbus protocol.
 //! - **Stateful, Thread-Safe Clients**: For easy and safe concurrent use.
 //! - **Stateless, Low-Level Functions**: For maximum flexibility and control.
 //! - **Synchronous and Asynchronous APIs**: Both blocking and `async/await` APIs are available.
 //! - **Strongly-Typed API**: Utilizes Rust's type system for protocol correctness (e.g., `Port`, `Address`, `PortState`).
+//!
+//! ## Cargo Features
+//!
+//! This crate uses feature flags to enable different functionalities and to
+//! select the desired `tokio-modbus` backend.
+//!
+//! For library users, it is recommended to disable the default features and
+//! enable only the ones you need. For example, in your `Cargo.toml`:
+//!
+//! ```toml
+//! [dependencies.R4DCB08]
+//! version = "0.3"
+//! default-features = false
+//! features = ["tokio-tcp-sync", "safe-client-sync"]
+//! ```
+//!
+//! ### Available Features
+//!
+//! - `tokio-rtu-sync`: Enables the synchronous (`blocking`) RTU backend.
+//! - `tokio-tcp-sync`: Enables the synchronous (`blocking`) TCP backend.
+//! - `tokio-rtu`: Enables the asynchronous (`async`) RTU backend.
+//! - `tokio-tcp`: Enables the asynchronous (`async`) TCP backend.
+//! - `safe-client-sync`: Enables the high-level, thread-safe, synchronous [`tokio_sync_safe_client::SafeClient`].
+//!   Requires either `tokio-rtu-sync` or `tokio-tcp-sync`.
+//! - `safe-client-async`: Enables the high-level, thread-safe, asynchronous [`tokio_async_safe_client::SafeClient`].
+//!   Requires either `tokio-rtu` or `tokio-tcp`.
+//! - `serde`: Enables `serde` support for the `protocol` types.
+//! - `bin-dependencies`: Enables all dependencies required for the `R4DCB08`
+//!   binary. This is not intended for library users.
+//!
+//! The `default` feature enables `bin-dependencies`.
 //!
 //! ## Quick Start
 //!
@@ -49,6 +80,15 @@
 
 pub mod protocol;
 
+#[cfg_attr(
+    docsrs,
+    doc(cfg(any(
+        feature = "tokio-rtu-sync",
+        feature = "tokio-tcp-sync",
+        feature = "tokio-rtu",
+        feature = "tokio-tcp"
+    )))
+)]
 #[cfg(any(
     feature = "tokio-rtu-sync",
     feature = "tokio-tcp-sync",

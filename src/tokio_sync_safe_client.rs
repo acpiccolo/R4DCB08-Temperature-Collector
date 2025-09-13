@@ -38,7 +38,7 @@ use tokio_modbus::{client::sync::Context, slave::SlaveContext, Slave};
 ///
 /// This struct provides methods to read sensor data and configure the module's
 /// operational parameters by wrapping `tokio-modbus` synchronous operations.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SafeClient {
     ctx: Arc<Mutex<Context>>,
 }

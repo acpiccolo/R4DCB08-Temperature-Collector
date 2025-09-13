@@ -44,7 +44,7 @@ use tokio_modbus::{client::Context, prelude::*};
 /// operational parameters by wrapping `tokio-modbus` asynchronous operations.
 ///
 /// All methods that interact with the Modbus device are `async` and return `Future`s.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SafeClient {
     ctx: Arc<Mutex<Context>>,
 }

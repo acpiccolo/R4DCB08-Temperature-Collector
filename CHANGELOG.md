@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.3.1...v0.4.0) - 2025-10-20
+
+### Fixed
+
+- fix build `tokio_modbus::prelude::sync::Context` doesn't implement `Debug`
+
+### Other
+
+- update cocogitto action to version 4
+- *(deps)* bump crate-ci/typos from 1.37.2 to 1.38.1
+- *(deps)* bump crate-ci/typos from 1.36.3 to 1.37.2
+- *(deps)* bump crate-ci/typos from 1.36.2 to 1.36.3
+- *(deps)* bump crate-ci/typos from 1.35.7 to 1.36.2
+- *(deps)* bump crate-ci/typos from 1.35.5 to 1.35.7
+- improve feature description in lib.rs
+
 ## [0.3.1](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.3.0...v0.3.1) - 2025-08-28
 
 ### Other

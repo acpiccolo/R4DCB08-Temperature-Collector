@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.4.0...v0.4.1) - 2025-11-03
+
+### Other
+
+- *(deps)* bump crate-ci/typos from 1.38.1 to 1.39.0
+- *(deps)* update tokio-modbus requirement from 0.16 to 0.17
+
 ## [0.4.0](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.3.1...v0.4.0) - 2025-10-20
 
 ### Fixed

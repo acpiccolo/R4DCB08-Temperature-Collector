@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.4.0...v0.4.1) - 2026-02-23
+
+### Other
+
+- replace old method
+- *(deps)* update rand requirement from 0.9 to 0.10
+- *(deps)* bump crate-ci/typos from 1.43.4 to 1.43.5
+- *(deps)* bump crate-ci/typos from 1.43.3 to 1.43.4
+- *(deps)* bump crate-ci/typos from 1.42.3 to 1.43.3
+- *(deps)* bump crate-ci/typos from 1.42.1 to 1.42.3
+- *(deps)* bump crate-ci/typos from 1.42.0 to 1.42.1
+- *(deps)* bump crate-ci/typos from 1.41.0 to 1.42.0
+- *(deps)* bump crate-ci/typos from 1.40.0 to 1.41.0
+- *(deps)* bump crate-ci/typos from 1.39.2 to 1.40.0
+- *(deps)* bump crate-ci/typos from 1.39.0 to 1.39.2
+- *(deps)* bump actions/checkout from 5 to 6
+- *(deps)* bump crate-ci/typos from 1.38.1 to 1.39.0
+- *(deps)* update tokio-modbus requirement from 0.16 to 0.17
+
 ## [0.4.0](https://github.com/acpiccolo/R4DCB08-Temperature-Collector/compare/v0.3.1...v0.4.0) - 2025-10-20
 
 ### Fixed

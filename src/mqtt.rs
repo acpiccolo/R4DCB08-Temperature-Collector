@@ -5,35 +5,35 @@ use std::time::Duration;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MqttConfig {
-    pub uri: String,
-    pub username: Option<String>,
-    pub password: Option<String>,
+    uri: String,
+    username: Option<String>,
+    password: Option<String>,
     #[serde(default = "MqttConfig::default_topic")]
-    pub topic: String,
+    topic: String,
     #[serde(default = "MqttConfig::default_qos")]
-    pub qos: i32,
+    qos: i32,
     #[serde(default = "MqttConfig::default_client_id")]
-    pub client_id: String,
+    client_id: String,
     #[serde(
         default = "MqttConfig::default_operation_timeout",
         with = "humantime_serde"
     )]
-    pub oparation_timeout: Duration,
+    oparation_timeout: Duration,
     #[serde(
         default = "MqttConfig::default_keep_alive_interval",
         with = "humantime_serde"
     )]
-    pub keep_alive_interval: Duration,
+    keep_alive_interval: Duration,
     #[serde(
         default = "MqttConfig::default_auto_reconnect_interval_min",
         with = "humantime_serde"
     )]
-    pub auto_reconnect_interval_min: Duration,
+    auto_reconnect_interval_min: Duration,
     #[serde(
         default = "MqttConfig::default_auto_reconnect_interval_max",
         with = "humantime_serde"
     )]
-    pub auto_reconnect_interval_max: Duration,
+    auto_reconnect_interval_max: Duration,
 }
 
 impl MqttConfig {

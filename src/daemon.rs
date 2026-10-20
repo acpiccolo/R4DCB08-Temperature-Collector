@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
 use log::{debug, error, info, trace, warn};
 use r4dcb08_lib::tokio_sync_safe_client::SafeClient;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use crate::{commandline, mqtt};
@@ -24,7 +26,17 @@ pub fn run(
         mqtt_publisher = Some(publisher);
     }
 
-    loop {
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+
+    if let Err(e) = ctrlc::set_handler(move || {
+        info!("Received shutdown signal. Stopping daemon gracefully...");
+        r.store(false, Ordering::SeqCst);
+    }) {
+        warn!("Failed to set Ctrl-C handler: {e}");
+    }
+
+    while running.load(Ordering::SeqCst) {
         debug!("Daemon: Reading temperatures...");
         match client.read_temperatures() {
             Ok(temperatures) => {
@@ -58,6 +70,16 @@ pub fn run(
                 error!("Daemon: Error reading temperatures: {e}");
             }
         }
-        std::thread::sleep(interval);
+
+        // Sleep in small steps to react quickly to shutdown signals
+        let sleep_step = Duration::from_millis(100).min(interval);
+        let mut elapsed = Duration::ZERO;
+        while elapsed < interval && running.load(Ordering::SeqCst) {
+            std::thread::sleep(sleep_step);
+            elapsed += sleep_step;
+        }
     }
+
+    info!("Daemon stopped cleanly.");
+    Ok(())
 }

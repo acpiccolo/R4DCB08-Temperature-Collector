@@ -78,7 +78,7 @@ impl MqttConfig {
         log::debug!("Loading config file from {config_file_path:?}");
         let config_file = std::fs::File::open(config_file_path)
             .with_context(|| format!("Cannot open MQTT config file {config_file_path:?}"))?;
-        let config: Self = serde_yaml::from_reader(&config_file)
+        let config: Self = yaml_serde::from_reader(&config_file)
             .with_context(|| format!("Cannot read MQTT config from file: {config_file_path:?}"))?;
         Ok(config)
     }

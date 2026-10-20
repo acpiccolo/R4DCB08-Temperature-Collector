@@ -386,7 +386,7 @@ fn main() -> Result<()> {
             poll_interval,
             output,
         } => {
-            daemon::run(&mut client, delay, output.clone(), *poll_interval)?;
+            daemon::run(&mut client, output.clone(), delay.max(*poll_interval))?;
         }
         commandline::CliCommands::Read => {
             info!("Executing: Read Temperatures");

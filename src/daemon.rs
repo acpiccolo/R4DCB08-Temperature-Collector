@@ -7,7 +7,6 @@ use crate::{commandline, mqtt};
 
 pub fn run(
     client: &mut SafeClient,
-    delay: Duration,
     output: commandline::DaemonOutput,
     interval: Duration,
 ) -> Result<()> {
@@ -59,6 +58,6 @@ pub fn run(
                 error!("Daemon: Error reading temperatures: {e}");
             }
         }
-        std::thread::sleep(delay.max(interval));
+        std::thread::sleep(interval);
     }
 }

@@ -1,40 +1,39 @@
 use anyhow::{Context, Result};
 use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder};
-use r4dcb08_lib::tokio_sync_safe_client::SafeClient;
 use serde::Deserialize;
 use std::time::Duration;
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct MqttConfig {
-    uri: String,
-    username: Option<String>,
-    password: Option<String>,
+    pub uri: String,
+    pub username: Option<String>,
+    pub password: Option<String>,
     #[serde(default = "MqttConfig::default_topic")]
-    topic: String,
+    pub topic: String,
     #[serde(default = "MqttConfig::default_qos")]
-    qos: i32,
+    pub qos: i32,
     #[serde(default = "MqttConfig::default_client_id")]
-    client_id: String,
+    pub client_id: String,
     #[serde(
         default = "MqttConfig::default_operation_timeout",
         with = "humantime_serde"
     )]
-    oparation_timeout: Duration,
+    pub oparation_timeout: Duration,
     #[serde(
         default = "MqttConfig::default_keep_alive_interval",
         with = "humantime_serde"
     )]
-    keep_alive_interval: Duration,
+    pub keep_alive_interval: Duration,
     #[serde(
         default = "MqttConfig::default_auto_reconnect_interval_min",
         with = "humantime_serde"
     )]
-    auto_reconnect_interval_min: Duration,
+    pub auto_reconnect_interval_min: Duration,
     #[serde(
         default = "MqttConfig::default_auto_reconnect_interval_max",
         with = "humantime_serde"
     )]
-    auto_reconnect_interval_max: Duration,
+    pub auto_reconnect_interval_max: Duration,
 }
 
 impl MqttConfig {
@@ -126,43 +125,32 @@ impl MqttConfig {
     }
 }
 
-pub fn run_daemon(
-    client: &mut SafeClient,
-    delay: &Duration,
-    poll_interval: &Duration,
-    config_file: &str,
-) -> Result<()> {
-    let config: MqttConfig = MqttConfig::load(config_file)?;
-    let cli = config.create_client()?;
+pub struct MqttPublisher {
+    client: Client,
+    topic: String,
+    qos: i32,
+}
 
-    loop {
-        log::debug!("Daemon: Reading temperatures for MQTT publishing...");
-        match client.read_temperatures() {
-            Ok(temperatures) => {
-                log::trace!("Temperatures read: {temperatures:?}");
-                for (ch_idx, temp_val) in temperatures.iter().enumerate() {
-                    let channel_topic = format!("{}/CH{ch_idx}", config.topic);
-                    let payload_str = temp_val.to_string();
+impl MqttPublisher {
+    pub fn new(config: MqttConfig) -> Result<Self> {
+        let topic = config.topic.clone();
+        let qos = config.qos;
+        let client = config.create_client()?;
+        Ok(Self { client, topic, qos })
+    }
 
-                    log::debug!(
-                        "Publishing to MQTT: Topic='{channel_topic}', Payload='{payload_str}', QoS={}",
-                        config.qos
-                    );
-                    let msg = paho_mqtt::Message::new_retained(
-                        channel_topic.clone(),
-                        payload_str.clone(),
-                        config.qos,
-                    );
+    pub fn topic(&self) -> &str {
+        &self.topic
+    }
 
-                    if let Err(e) = cli.publish(msg) {
-                        log::error!("Failed to publish MQTT message to {channel_topic}: {e}.");
-                    }
-                }
-            }
-            Err(e) => {
-                log::error!("Daemon: Error reading temperatures: {e}");
-            }
-        }
-        std::thread::sleep(*delay.max(poll_interval));
+    pub fn qos(&self) -> i32 {
+        self.qos
+    }
+
+    pub fn publish(&self, topic: &str, payload: &str) -> Result<()> {
+        let msg = paho_mqtt::Message::new_retained(topic, payload, self.qos);
+        self.client
+            .publish(msg)
+            .with_context(|| format!("Failed to publish MQTT message to topic {topic}"))
     }
 }

@@ -52,7 +52,8 @@ pub fn run(
                                 let channel_topic = match publisher.channel_topic(ch_idx) {
                                     Some(topic_str) => topic_str,
                                     None => {
-                                        fallback_topic = format!("{}/CH{ch_idx}", publisher.topic());
+                                        fallback_topic =
+                                            format!("{}/CH{ch_idx}", publisher.topic());
                                         &fallback_topic
                                     }
                                 };
@@ -64,7 +65,9 @@ pub fn run(
                                 );
 
                                 if let Err(e) = publisher.publish(channel_topic, &payload_str) {
-                                    error!("Failed to publish MQTT message to {channel_topic}: {e}.");
+                                    error!(
+                                        "Failed to publish MQTT message to {channel_topic}: {e}."
+                                    );
                                 }
                             }
                         } else {

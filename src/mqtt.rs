@@ -42,17 +42,20 @@ impl fmt::Debug for MqttConfig {
         f.debug_struct("MqttConfig")
             .field("uri", &self.uri)
             .field("username", &self.username)
-            .field(
-                "password",
-                &self.password.as_ref().map(|_| "********"),
-            )
+            .field("password", &self.password.as_ref().map(|_| "********"))
             .field("topic", &self.topic)
             .field("qos", &self.qos)
             .field("client_id", &self.client_id)
             .field("operation_timeout", &self.operation_timeout)
             .field("keep_alive_interval", &self.keep_alive_interval)
-            .field("auto_reconnect_interval_min", &self.auto_reconnect_interval_min)
-            .field("auto_reconnect_interval_max", &self.auto_reconnect_interval_max)
+            .field(
+                "auto_reconnect_interval_min",
+                &self.auto_reconnect_interval_min,
+            )
+            .field(
+                "auto_reconnect_interval_max",
+                &self.auto_reconnect_interval_max,
+            )
             .finish()
     }
 }
@@ -202,6 +205,7 @@ impl MqttPublisher {
         self.client
             .publish(msg)
             .with_context(|| format!("Failed to publish MQTT message to topic {topic}"))
+            .map(|_| ())
     }
 
     pub fn disconnect(&self) {

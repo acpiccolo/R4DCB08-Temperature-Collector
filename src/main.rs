@@ -26,6 +26,7 @@ use std::io::{stdout, Write};
 use std::{panic, time::Duration};
 
 mod commandline;
+mod daemon;
 mod mqtt;
 
 fn logging_init(loglevel: LevelFilter) -> LoggerHandle {
@@ -385,17 +386,7 @@ fn main() -> Result<()> {
             poll_interval,
             output,
         } => {
-            info!("Starting daemon mode: output={output:?}, interval={poll_interval:?}");
-            match output {
-                commandline::DaemonOutput::Console => loop {
-                    debug!("Daemon: Reading temperatures for stdout...");
-                    print_temperature!(&mut client);
-                    std::thread::sleep(delay.max(*poll_interval));
-                },
-                commandline::DaemonOutput::Mqtt { config_file } => {
-                    mqtt::run_daemon(&mut client, &delay, poll_interval, config_file)?;
-                }
-            }
+            daemon::run(&mut client, output.clone(), delay.max(*poll_interval))?;
         }
         commandline::CliCommands::Read => {
             info!("Executing: Read Temperatures");

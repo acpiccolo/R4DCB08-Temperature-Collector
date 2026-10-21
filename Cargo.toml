@@ -35,6 +35,7 @@ bin-dependencies = [
     "clap/derive",
     "rand",
     "dep:humantime-serde",
+    "dep:ctrlc",
 ]
 tokio-rtu-sync = ["tokio-modbus/rtu-sync", "dep:tokio-serial"]
 tokio-rtu = ["tokio-modbus/rtu", "dep:tokio-serial"]
@@ -62,6 +63,7 @@ dialoguer = { version = "0.12", optional = true }
 humantime = { version = "2", optional = true }
 paho-mqtt = { version = "0.14", optional = true }
 rand = { version = "0.10", optional = true }
+ctrlc = { version = "3.4", optional = true }
 humantime-serde = { version = "1", optional = true }
 
 [dev-dependencies]

@@ -48,7 +48,14 @@ pub fn run(
                     commandline::DaemonOutput::Mqtt { .. } => {
                         if let Some(publisher) = &mqtt_publisher {
                             for (ch_idx, temp_val) in temperatures.iter().enumerate() {
-                                let channel_topic = format!("{}/CH{ch_idx}", publisher.topic());
+                                let fallback_topic;
+                                let channel_topic = match publisher.channel_topic(ch_idx) {
+                                    Some(topic_str) => topic_str,
+                                    None => {
+                                        fallback_topic = format!("{}/CH{ch_idx}", publisher.topic());
+                                        &fallback_topic
+                                    }
+                                };
                                 let payload_str = temp_val.to_string();
 
                                 debug!(
@@ -56,7 +63,7 @@ pub fn run(
                                     publisher.qos()
                                 );
 
-                                if let Err(e) = publisher.publish(&channel_topic, &payload_str) {
+                                if let Err(e) = publisher.publish(channel_topic, &payload_str) {
                                     error!("Failed to publish MQTT message to {channel_topic}: {e}.");
                                 }
                             }
@@ -78,6 +85,10 @@ pub fn run(
             std::thread::sleep(sleep_step);
             elapsed += sleep_step;
         }
+    }
+
+    if let Some(publisher) = mqtt_publisher {
+        publisher.disconnect();
     }
 
     info!("Daemon stopped cleanly.");

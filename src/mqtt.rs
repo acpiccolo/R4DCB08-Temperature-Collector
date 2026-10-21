@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use paho_mqtt::{Client, ConnectOptionsBuilder, CreateOptionsBuilder};
 use serde::Deserialize;
+use std::fmt;
 use std::time::Duration;
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 pub struct MqttConfig {
     uri: String,
     username: Option<String>,
@@ -16,9 +17,10 @@ pub struct MqttConfig {
     client_id: String,
     #[serde(
         default = "MqttConfig::default_operation_timeout",
+        alias = "oparation_timeout",
         with = "humantime_serde"
     )]
-    oparation_timeout: Duration,
+    operation_timeout: Duration,
     #[serde(
         default = "MqttConfig::default_keep_alive_interval",
         with = "humantime_serde"
@@ -34,6 +36,26 @@ pub struct MqttConfig {
         with = "humantime_serde"
     )]
     auto_reconnect_interval_max: Duration,
+}
+
+impl fmt::Debug for MqttConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MqttConfig")
+            .field("uri", &self.uri)
+            .field("username", &self.username)
+            .field(
+                "password",
+                &self.password.as_ref().map(|_| "[REDACTED]"),
+            )
+            .field("topic", &self.topic)
+            .field("qos", &self.qos)
+            .field("client_id", &self.client_id)
+            .field("operation_timeout", &self.operation_timeout)
+            .field("keep_alive_interval", &self.keep_alive_interval)
+            .field("auto_reconnect_interval_min", &self.auto_reconnect_interval_min)
+            .field("auto_reconnect_interval_max", &self.auto_reconnect_interval_max)
+            .finish()
+    }
 }
 
 impl MqttConfig {
@@ -110,7 +132,7 @@ impl MqttConfig {
         let mut client = Client::new(create_opts)
             .with_context(|| format!("Error creating MQTT client for server: {}", self.uri))?;
 
-        client.set_timeout(self.oparation_timeout);
+        client.set_timeout(self.operation_timeout);
 
         let mut conn_builder = ConnectOptionsBuilder::new();
         conn_builder
@@ -147,14 +169,21 @@ pub struct MqttPublisher {
     client: Client,
     topic: String,
     qos: i32,
+    channel_topics: Vec<String>,
 }
 
 impl MqttPublisher {
     pub fn new(config: MqttConfig) -> Result<Self> {
         let topic = config.topic.clone();
         let qos = config.qos;
+        let channel_topics = (0..8).map(|ch_idx| format!("{topic}/CH{ch_idx}")).collect();
         let client = config.create_client()?;
-        Ok(Self { client, topic, qos })
+        Ok(Self {
+            client,
+            topic,
+            qos,
+            channel_topics,
+        })
     }
 
     pub fn topic(&self) -> &str {
@@ -165,10 +194,25 @@ impl MqttPublisher {
         self.qos
     }
 
+    pub fn channel_topic(&self, channel_idx: usize) -> Option<&str> {
+        self.channel_topics.get(channel_idx).map(|s| s.as_str())
+    }
+
     pub fn publish(&self, topic: &str, payload: &str) -> Result<()> {
         let msg = paho_mqtt::Message::new_retained(topic, payload, self.qos);
         self.client
             .publish(msg)
             .with_context(|| format!("Failed to publish MQTT message to topic {topic}"))
+    }
+
+    pub fn disconnect(&self) {
+        if self.client.is_connected() {
+            log::info!("Disconnecting from MQTT broker...");
+            if let Err(e) = self.client.disconnect(None) {
+                log::warn!("Failed to disconnect cleanly from MQTT broker: {e}");
+            } else {
+                log::info!("Disconnected cleanly from MQTT broker.");
+            }
+        }
     }
 }

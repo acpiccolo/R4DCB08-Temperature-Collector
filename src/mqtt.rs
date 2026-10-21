@@ -17,7 +17,6 @@ pub struct MqttConfig {
     client_id: String,
     #[serde(
         default = "MqttConfig::default_operation_timeout",
-        alias = "oparation_timeout",
         with = "humantime_serde"
     )]
     operation_timeout: Duration,

@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use log::{debug, error, info, trace, warn};
 use r4dcb08_lib::tokio_sync_safe_client::SafeClient;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
+use std::{
+    sync::{Arc, Condvar, Mutex},
+    time::Duration,
+};
 
 use crate::{commandline, mqtt};
 
@@ -26,17 +27,26 @@ pub fn run(
         mqtt_publisher = Some(publisher);
     }
 
-    let running = Arc::new(AtomicBool::new(true));
-    let r = running.clone();
+    let shutdown_pair = Arc::new((Mutex::new(false), Condvar::new()));
 
-    if let Err(e) = ctrlc::set_handler(move || {
-        info!("Received shutdown signal. Stopping daemon gracefully...");
-        r.store(false, Ordering::SeqCst);
+    if let Err(e) = ctrlc::set_handler({
+        let shutdown_pair = shutdown_pair.clone();
+        move || {
+            info!("Received shutdown signal. Stopping daemon gracefully...");
+            let (lock, cvar) = &*shutdown_pair;
+            if let Ok(mut shutdown) = lock.lock() {
+                *shutdown = true;
+                cvar.notify_all();
+            }
+        }
     }) {
         warn!("Failed to set Ctrl-C handler: {e}");
     }
 
-    while running.load(Ordering::SeqCst) {
+    let (lock, cvar) = &*shutdown_pair;
+    let mut shutdown = lock.lock().unwrap();
+
+    while !*shutdown {
         debug!("Daemon: Reading temperatures...");
         match client.read_temperatures() {
             Ok(temperatures) => {
@@ -81,13 +91,12 @@ pub fn run(
             }
         }
 
-        // Sleep in small steps to react quickly to shutdown signals
-        let sleep_step = Duration::from_millis(100).min(interval);
-        let mut elapsed = Duration::ZERO;
-        while elapsed < interval && running.load(Ordering::SeqCst) {
-            std::thread::sleep(sleep_step);
-            elapsed += sleep_step;
+        if *shutdown {
+            break;
         }
+
+        let result = cvar.wait_timeout(shutdown, interval).unwrap();
+        shutdown = result.0;
     }
 
     if let Some(publisher) = mqtt_publisher {

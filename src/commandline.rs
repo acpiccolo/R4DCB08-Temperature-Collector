@@ -54,6 +54,10 @@ pub enum CliConnection {
         /// Example: "192.168.1.100:502" or "modbus-gateway.local:502".
         address: String,
 
+        /// Modbus slave address from 1 to 247
+        #[arg(short, long, default_value_t = proto::Address::default(), value_parser = parse_address)]
+        slave: proto::Address,
+
         /// TCP-specific commands for the connected device.
         #[command(subcommand)]
         command: CliCommands,

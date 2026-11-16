@@ -82,7 +82,7 @@ You can connect to the temperature collector via Modbus RTU (serial) or TCP.
   ```
 - **TCP:**
   ```sh
-  tempcol tcp 192.168.0.222:502 <COMMAND>
+  tempcol tcp 192.168.0.222:502 --slave 1 <COMMAND>
   ```
 
 ### Global Options

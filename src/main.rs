@@ -225,14 +225,19 @@ fn create_safe_client<'a>(
     let (mut ctx, command_to_execute) = match connection {
         commandline::CliConnection::Tcp {
             address: tcp_address_str,
+            slave,
             command,
         } => {
             let socket_addr = tcp_address_str
                 .parse()
                 .with_context(|| format!("Invalid TCP address format: '{tcp_address_str}'"))?;
-            info!("Attempting to connect via TCP to {socket_addr}...");
+            info!("Attempting to connect via TCP to {socket_addr} (Slave: {slave})...");
             (
-                tokio_modbus::client::sync::tcp::connect(socket_addr).with_context(|| {
+                tokio_modbus::client::sync::tcp::connect_slave(
+                    socket_addr,
+                    tokio_modbus::Slave(**slave),
+                )
+                .with_context(|| {
                     format!("Failed to connect to Modbus TCP device at {socket_addr}")
                 })?,
                 command,
